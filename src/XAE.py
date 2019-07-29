@@ -366,14 +366,15 @@ class XAE():
         self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
                                            axis = 1)
     
-        self.imgs_to_save = np.dstack((self.imgs_to_save,
-                                       self.imgs_to_save,
-                                       self.imgs_to_save))
+        save_stack = np.dstack((self.imgs_to_save,
+                                self.imgs_to_save,
+                                self.imgs_to_save))
         
-        self.imgs_to_save = (self.imgs_to_save * 255).astype(np.uint8)
+        save_stack = (save_stack * 255).astype(np.uint8)
         
-        saveImg = Image.fromarray(self.imgs_to_save)
-        saveImg.save(os.path.join(self.save_dir, 'ImageReconstructions.png'))
+        save_image = Image.fromarray(save_stack)
+        save_image.save(os.path.join(self.save_dir, 
+                                     'ImageReconstructions.png'))
          
 
     def Train(self):
