@@ -7,12 +7,14 @@ import time
 
 from keras.models import Model
 from keras.layers import Input, Dense, Conv2D, Lambda, Reshape, Flatten
+from keras.layers import Conv2DTranspose
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy
 from keras import backend as K
 from keras.datasets import mnist
 
 import numpy as np
+import pandas as pd
 
 os.environ['HDF5_USE_FILE_LOCKING']='FALSE' 
 
@@ -21,21 +23,29 @@ class XAE():
     ''' Instantiate a cycle consistent cross-domain autoencoder '''
     
     def __init__(self, 
-                 learning_rate = 0.001, 
+                 learning_rate = 2e-4,
+                 lambda_1 = 10.0,
+                 lambda_2 = 10.0,
+                 beta_1 = 0.5,
+                 beta_2 = 0.99,
                  img_shape = (64, 64, 3), 
                  ome_shape = (100,), 
-                 latent_dim = 16, 
+                 latent_dim = 8, 
                  inter_dim = 64,
                  data_dir = 'data/test',
                  save_dir = 'results/test',
                  epochs = 2,
-                 batch_size = 1,
+                 batch_size = 32,
                  do_save_model = False
                  ):
         
         # instantiate self parameters
         
         self.lr = learning_rate
+        self.lambda_1 = lambda_1
+        self.lambda_2 = lambda_2
+        self.beta_1 = beta_1
+        self.beta_2 = beta_2
         self.img_shape = img_shape
         self.ome_shape = ome_shape
         self.latent_dim = latent_dim
@@ -53,17 +63,18 @@ class XAE():
         os.makedirs(self.save_dir, exist_ok = True)
         
         
+        # load data
+        
         self.LoadData()
+        
+        # configure optimizer
+        
+        self.optimizer = Adam(self.lr, self.beta_1, self.beta_2)
         
         # configure input layers
         
         self.image_input = Input(shape = self.img_shape)
         self.omic_input = Input(shape = self.ome_shape)
-        
-        
-        # TODO: configure optimizer alpha, beta decays
-        
-        self.optimizer = Adam(self.lr)
         
         # build shared latent layer
                                 
@@ -120,6 +131,12 @@ class XAE():
         
         self.C_C.summary()
         
+        C_C_loss = ['binary_crossentropy', 
+                    'binary_crossentropy']
+        
+        C_C_weights = [self.lambda_1, 
+                       self.lambda_2]
+        
         
         # compile models
         
@@ -136,12 +153,10 @@ class XAE():
                          loss = binary_crossentropy)
         
         self.C_C.compile(optimizer = self.optimizer,
-                         loss = binary_crossentropy)
-                
-        self.Train()
+                         loss = C_C_loss,
+                         loss_weights = C_C_weights)
         
-        if self.do_save_model:
-            self.SaveModel()
+        self.Train()
         
         self.Test()
         
@@ -150,10 +165,20 @@ class XAE():
     def ImageEncoder(self, name = None):
         ''' Encode image into shared latent space '''
         
-        x = Conv2D(self.latent_dim, 
+        x = Conv2D(filters = 16, 
                    kernel_size = 3, 
                    activation = 'relu')(self.image_input)
+        
+        x = Conv2D(filters = 8, 
+                   kernel_size = 3, 
+                   activation = 'relu')(x)
+        
+        x = Conv2D(filters = 4, 
+                   kernel_size = 3, 
+                   activation = 'relu')(x)
+        
         x = Flatten()(x)
+        
         x = Dense(self.inter_dim, activation = 'relu')(x)
         
         # reparameterization trick
@@ -169,11 +194,23 @@ class XAE():
     
     def ImageDecoder(self, name = None):
         ''' Decode latent space into image domain '''
-        print('image decoder shape', self.img_shape)
+
         image_decoder_input = Input(shape = (self.latent_dim,))
+        
         x = Dense(np.prod(self.img_shape), 
                   activation = 'relu')(image_decoder_input)
-        image_output = Reshape(self.img_shape)(x)
+        
+        x = Reshape(self.img_shape)(x)
+        
+        x = Conv2DTranspose(filters = 16,
+                            kernel_size = 3,
+                            activation='sigmoid',
+                            padding='same')(x)
+        
+        image_output = Conv2DTranspose(filters = 1,
+                                       kernel_size = 3,
+                                       activation='sigmoid',
+                                       padding='same')(x)
         
         return Model(inputs = image_decoder_input, 
                      outputs = image_output, 
@@ -183,8 +220,11 @@ class XAE():
     def OmicEncoder(self, name = None):
         ''' Encode genomic profile into shared latent space '''
         
-        x = Dense(self.latent_dim, activation = 'relu')(self.omic_input)
+        x = Dense(self.inter_dim, activation = 'relu')(self.omic_input)
+        
         x = Dense(self.inter_dim, activation = 'relu')(x)
+        
+        x = Dense(self.latent_dim, activation = 'relu')(x)
         
         # reparameterization trick
         
@@ -201,8 +241,13 @@ class XAE():
         ''' Decode latent space into omic domain '''
         
         omic_decoder_input = Input(shape = (self.latent_dim,))
+        
+        x = Dense(self.inter_dim, activation = 'relu')(omic_decoder_input) 
+
+        x = Dense(self.inter_dim, activation = 'relu')(x) 
+        
         omic_output = Dense(self.ome_shape[0], 
-                            activation = 'relu')(omic_decoder_input)
+                            activation = 'relu')(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
@@ -279,7 +324,7 @@ class XAE():
         
         print('loading data')
         
-        # transform imaging and omics data as necessary
+        # TODO: point to actual datasets
         
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
         image_size = x_train.shape[1]
@@ -302,8 +347,6 @@ class XAE():
         print('training omic shape', self.ome_train.shape)
         print('testing image shape', self.img_test.shape)
         print('testing omic shape', self.ome_test.shape)
-        
-
 
 
     def Train(self):
@@ -311,37 +354,33 @@ class XAE():
         
         print('training for', self.epochs, 'epochs')
         
-        # instantiate arrays for transformed data
+        # TODO: instantiate arrays for transformed data to save
         
-        #real_A = self.A_test[0]
-        #real_B = self.B_test[0]
-        #real_A = real_A[np.newaxis, :, :, :]
-        #real_B = real_B[np.newaxis, :, :, :]
+        history_columns = ['epoch',
+                           'ImageAutoencoderLoss',
+                           'OmicAutoencoderLoss',
+                           'CrossChannelLoss']
+        
+        history_to_save = pd.DataFrame(columns = history_columns)
         
         for epoch in range(self.epochs):
-            
-            # TODO: shuffle data
-            
+                
             print('Epoch {} started'.format(epoch))
             
             # fit autoencoders
             
             print('fitting image autoencoder')
-            self.I_A.fit(x = self.img_train,
-                         y = self.img_train,
-                         epochs = 1,
-                         batch_size = self.batch_size,
-                         validation_steps = 0)
-            
+            I_A_history = self.I_A.fit(x = self.img_train,
+                                       y = self.img_train,
+                                       epochs = 1,
+                                       batch_size = self.batch_size)
             
             print('fitting omic autoencoder')
-            self.O_A.fit(x = self.ome_train,
-                         y = self.ome_train,
-                         epochs = 1,
-                         batch_size = self.batch_size,
-                         validation_steps = 0)
+            O_A_history = self.O_A.fit(x = self.ome_train,
+                                       y = self.ome_train,
+                                       epochs = 1,
+                                       batch_size = self.batch_size)
                     
-
             # generate cross-domain predictions
             
             print('generating predictions')
@@ -352,21 +391,44 @@ class XAE():
             recreated_omes = self.I2O.predict(synthetic_imgs)
             
             
-            # fit domain translators
+            # fit domain translator
             
             print('fitting domain translator')
-            self.C_C.fit(x = [self.img_train, self.ome_train],
-                         y = [recreated_imgs, recreated_omes],
-                         epochs = 1,
-                         batch_size = self.batch_size,
-                         validation_steps = 0)
+            C_C_history = self.C_C.fit(x = [self.img_train, self.ome_train],
+                                       y = [recreated_imgs, recreated_omes],
+                                       epochs = 1,
+                                       batch_size = self.batch_size)
             
+            # save histories
+                        
+            history_vals = [epoch,
+                            I_A_history.history['loss'][0],
+                            O_A_history.history['loss'][0],
+                            C_C_history.history['loss'][0]]
             
-            #self.save_tmp_images(real_A, real_B, synthetic_image_A, synthetic_image_B)
-            
+            history_to_save = history_to_save.append(dict(zip(history_columns, 
+                                                              history_vals)),
+                                   ignore_index = True)
+                        
+            # TODO: save images
+            self.SaveImages()
 
-        #self.saveModel(self.I2O, 200)
-        #self.saveModel(self.O2I, 200)
+            # TODO: save models at certain epochs w/ epoch # in filename            
+            if self.do_save_model:
+                self.SaveModel()
+                
+        history_to_save.to_csv(os.path.join(self.save_dir,
+                                            'history.csv'), index = False)
+
+
+    def SaveImages(self):
+        ''' save sample input imags and reconstructions '''
+        
+        print('saving images...')
+        
+        #self.save_tmp_images(real_A, real_B, 
+        #synthetic_image_A, synthetic_image_B)
+
 
 
     def SaveModel(self):
@@ -382,11 +444,12 @@ class XAE():
         ''' test XAE model '''
         
         print('testing...')
-        
+        # TODO: generate cross-domain predictions for each input
+        # TODO: save reconstructions A and B
 
 
 if __name__ == '__main__':
 
-    ccdae_model = XAE()
+    xae_model = XAE()
 
 
