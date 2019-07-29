@@ -366,11 +366,6 @@ class XAE():
         self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
                                            axis = 1)
     
-    
-    def SaveImages(self):
-        ''' save sample input imags and reconstructions '''
-        
-        print('saving images')
         self.imgs_to_save = np.dstack((self.imgs_to_save,
                                        self.imgs_to_save,
                                        self.imgs_to_save))
@@ -447,10 +442,7 @@ class XAE():
 
             if self.do_save_model:
                 self.SaveModel(epoch)
-                                
-        
-        self.SaveImages()
-        
+                                        
         history_to_save.to_csv(os.path.join(self.save_dir, 'history.csv'), 
                                index = False)
         
@@ -472,14 +464,35 @@ class XAE():
     def EncodeData(self):
         ''' encode XAE model '''
         
-        print('encoding dataset...')
-        # training:
         # encode imaging -> latent space
+        
+        print('encoding images to latent space')
+        encoded_images = self.I_E.predict(self.img_train)
+        encoded_images = pd.DataFrame(encoded_images)
+        encoded_images.to_csv(os.path.join(self.save_dir, 'encodedImages.csv'),
+                              index = False)
+        
         # encode omics -> latent space
+        
+        print('encoding omics to latent space')
+        encoded_omics = self.O_E.predict(self.ome_train)
+        encoded_omics = pd.DataFrame(encoded_omics)
+        encoded_omics.to_csv(os.path.join(self.save_dir, 'encodedOmics.csv'),
+                             index = False)
+        
         # encode image -> omic
+        
+        print('translating images to omics domain')
+        images2omics = self.I2O.predict(self.img_train)
+        images2omics = pd.DataFrame(images2omics)
+        images2omics.to_csv(os.path.join(self.save_dir, 'images2omics.csv'),
+                             index = False)
+        
         # encode omic -> image
         
-        # then testing:
+        omics2images = self.O2I.predict(self.ome_train)
+        np.save(os.path.join(self.save_dir, 'omics2images.npy'), omics2images)
+        
         
 
 if __name__ == '__main__':
