@@ -1,9 +1,10 @@
 '''
-XAE: Cycle Consistent Cross-Domain Autoencoder
+XAE: Cycle Consistent Cross-Domain Autoencoder Architecture
 '''
 
 import os
 import time
+import argparse
 
 from keras.models import Model
 from keras.layers import Input, Dense, Conv2D, Lambda, Reshape, Flatten
@@ -28,9 +29,7 @@ class XAE():
                  lambda_1 = 10.0,
                  lambda_2 = 10.0,
                  beta_1 = 0.5,
-                 beta_2 = 0.99,
-                 img_shape = (64, 64, 3), 
-                 ome_shape = (100,), 
+                 beta_2 = 0.99, 
                  latent_dim = 8, 
                  inter_dim = 64,
                  data_dir = 'data/test',
@@ -48,8 +47,6 @@ class XAE():
         self.lambda_2 = lambda_2
         self.beta_1 = beta_1
         self.beta_2 = beta_2
-        self.img_shape = img_shape
-        self.ome_shape = ome_shape
         self.latent_dim = latent_dim
         self.inter_dim = inter_dim
         self.epochs = epochs
@@ -155,7 +152,7 @@ class XAE():
         
         self.Train()
         
-        self.Test()
+        self.EncodeData()
         
         
     def ImageEncoder(self, name = None):
@@ -362,10 +359,6 @@ class XAE():
         o2i = self.O2I.predict(i2o)
         flat_c_c_recon = np.concatenate(o2i)
         
-        print('flat_i_a', flat_i_a_recon.shape)
-        print('flat_c_c', flat_c_c_recon.shape)
-        
-        
         img_to_add = np.concatenate((np.ones((flat_i_a_recon.shape[0], 1, 1)),
                                      flat_i_a_recon,
                                      flat_c_c_recon), axis = 1)
@@ -382,7 +375,7 @@ class XAE():
                                        self.imgs_to_save,
                                        self.imgs_to_save))
         
-        self.imgs_to_save = (self.imgs_to_save * 2**8).astype(np.uint8)
+        self.imgs_to_save = (self.imgs_to_save * 255).astype(np.uint8)
         
         saveImg = Image.fromarray(self.imgs_to_save)
         saveImg.save(os.path.join(self.save_dir, 'ImageReconstructions.png'))
@@ -407,10 +400,7 @@ class XAE():
         for epoch in range(self.epochs):
                 
             print('Epoch {} started'.format(epoch))
-            
-            self.AddReconstructionsToSaver()
-
-        
+                    
             # fit autoencoders
             
             print('fitting image autoencoder')
@@ -453,6 +443,8 @@ class XAE():
                                                               history_vals)),
                                    ignore_index = True)
             
+            self.AddReconstructionsToSaver()
+
             if self.do_save_model:
                 self.SaveModel(epoch)
                                 
@@ -477,16 +469,45 @@ class XAE():
                                            'epoch_' + str(epoch) + 'O_A.h5'))
          
 
-    def Test(self):
-        ''' test XAE model '''
+    def EncodeData(self):
+        ''' encode XAE model '''
         
-        print('testing...')
-        # TODO: generate cross-domain predictions for each input
-        # TODO: save reconstructions A and B
-
+        print('encoding dataset...')
+        # training:
+        # encode imaging -> latent space
+        # encode omics -> latent space
+        # encode image -> omic
+        # encode omic -> image
+        
+        # then testing:
+        
 
 if __name__ == '__main__':
-
-    xae_model = XAE()
-
-
+    parser = argparse.ArgumentParser(description = 'build XAE model')
+    parser.add_argument('--learning_rate', type = float, default = 2e-4)
+    parser.add_argument('--lambda_1', type = float, default = 10.0)
+    parser.add_argument('--lambda_2', type = float, default = 10.0)
+    parser.add_argument('--beta_1', type = float, default = 0.5)
+    parser.add_argument('--beta_2', type = float, default = 0.99)
+    parser.add_argument('--latent_dim', type = int, default = 8)
+    parser.add_argument('--batch_size', type = int, default = 32)
+    parser.add_argument('--epochs', type = int, default = 10)
+    parser.add_argument('--n_imgs_to_save', type = int, default = 30)
+    parser.add_argument('--save_dir', type = str, default = 'results/test')
+    parser.add_argument('--data_dir', type = str, default = 'data/test')
+    parser.add_argument('--do_save_model', type = bool, default = False)
+    args = parser.parse_args()
+    
+    xae_model = XAE(learning_rate = args.learning_rate,
+                    lambda_1 = args.lambda_1,
+                    lambda_2 = args.lambda_2,
+                    beta_1 = args.beta_1,
+                    beta_2 = args.beta_2,
+                    latent_dim = args.latent_dim,
+                    batch_size = args.batch_size,
+                    epochs = args.epochs,
+                    n_imgs_to_save = args.n_imgs_to_save,
+                    save_dir = args.save_dir,
+                    data_dir = args.data_dir,
+                    do_save_model = args.do_save_model)
+    
