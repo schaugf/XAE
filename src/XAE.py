@@ -15,6 +15,7 @@ from keras.datasets import mnist
 
 import numpy as np
 import pandas as pd
+from PIL import Image
 
 os.environ['HDF5_USE_FILE_LOCKING']='FALSE' 
 
@@ -36,7 +37,8 @@ class XAE():
                  save_dir = 'results/test',
                  epochs = 2,
                  batch_size = 32,
-                 do_save_model = False
+                 do_save_model = False,
+                 n_imgs_to_save = 30
                  ):
         
         # instantiate self parameters
@@ -52,6 +54,7 @@ class XAE():
         self.inter_dim = inter_dim
         self.epochs = epochs
         self.batch_size = batch_size
+        self.n_imgs_to_save = n_imgs_to_save
         
         self.data_dir = data_dir
         self.date_time = time.strftime('%Y%m%d-%H%M%S', time.localtime())
@@ -62,7 +65,7 @@ class XAE():
         
         os.makedirs(self.save_dir, exist_ok = True)
         
-        
+
         # load data
         
         self.LoadData()
@@ -82,7 +85,6 @@ class XAE():
                                    output_shape = (latent_dim,), 
                                    name = 'latent_layer')
 
-    
         # build image autoencoder
         
         self.I_E = self.ImageEncoder(name = 'image_encoder')
@@ -93,7 +95,6 @@ class XAE():
         self.I_D.summary()
         self.I_A.summary()
         
-        
         # build omic autoencoder
         
         self.O_E = self.OmicEncoder(name = 'omic_encoder')
@@ -103,8 +104,7 @@ class XAE():
         self.O_E.summary()
         self.O_D.summary()
         self.O_A.summary()
-
-
+        
         # build symbolic transformation tensors
         
         image2omic = self.O_D(self.I_E(self.image_input))
@@ -112,7 +112,6 @@ class XAE():
         
         rec_image = self.I_D(self.O_E(image2omic))
         rec_omic = self.O_D(self.I_E(omic2image))
-        
         
         # build domain transfer models
         
@@ -122,7 +121,6 @@ class XAE():
         self.O2I = Model(inputs = self.omic_input,
                          outputs = omic2image)
 
-        
         # build cycle model
 
         self.C_C = Model(inputs = [self.image_input, self.omic_input],
@@ -136,7 +134,6 @@ class XAE():
         
         C_C_weights = [self.lambda_1, 
                        self.lambda_2]
-        
         
         # compile models
         
@@ -161,7 +158,6 @@ class XAE():
         self.Test()
         
         
-    
     def ImageEncoder(self, name = None):
         ''' Encode image into shared latent space '''
         
@@ -322,10 +318,9 @@ class XAE():
     def LoadData(self):
         ''' Load imaging and omics data sets '''
         
-        print('loading data')
-        
         # TODO: point to actual datasets
         
+        print('loading data')
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
         image_size = x_train.shape[1]
         x_train = np.reshape(x_train, [-1, image_size, image_size, 1])
@@ -333,28 +328,72 @@ class XAE():
         x_train = x_train.astype('float32') / 255
         x_test = x_test.astype('float32') / 255
         
+        # subset data for quick prototyping
         
-        self.img_train = x_train[0:300,:]
-        self.img_test = x_test[0:100,:]
+        self.img_train = x_train
+        self.img_test = x_test
         
-        self.ome_train = x_train.reshape(-1, np.prod(x_train.shape[1:]))[0:300,:]
-        self.ome_test = x_test.reshape(-1, np.prod(x_test.shape[1:]))[0:100,:]
+        self.ome_train = x_train.reshape(-1, np.prod(x_train.shape[1:]))
+        self.ome_test = x_test.reshape(-1, np.prod(x_test.shape[1:]))
         
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
         
         print('training image shape', self.img_train.shape)
         print('training omic shape', self.ome_train.shape)
-        print('testing image shape', self.img_test.shape)
-        print('testing omic shape', self.ome_test.shape)
 
+
+    def InitImageSaver(self):
+        ''' create empty array to which to save images '''
+                
+        self.imgs_to_save_stack = self.img_train[0:self.n_imgs_to_save,:]
+        
+        self.imgs_to_save = np.concatenate(self.imgs_to_save_stack)
+        
+    
+    def AddReconstructionsToSaver(self):
+        ''' add a column of images to a stack '''
+        
+        print('generating predictions for saving')
+        i_a_recon = self.I_A.predict(self.imgs_to_save_stack)
+        flat_i_a_recon = np.concatenate(i_a_recon)
+        
+        i2o = self.I2O.predict(self.imgs_to_save_stack)
+        o2i = self.O2I.predict(i2o)
+        flat_c_c_recon = np.concatenate(o2i)
+        
+        print('flat_i_a', flat_i_a_recon.shape)
+        print('flat_c_c', flat_c_c_recon.shape)
+        
+        
+        img_to_add = np.concatenate((np.ones((flat_i_a_recon.shape[0], 1, 1)),
+                                     flat_i_a_recon,
+                                     flat_c_c_recon), axis = 1)
+        
+        self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
+                                           axis = 1)
+    
+    
+    def SaveImages(self):
+        ''' save sample input imags and reconstructions '''
+        
+        print('saving images')
+        self.imgs_to_save = np.dstack((self.imgs_to_save,
+                                       self.imgs_to_save,
+                                       self.imgs_to_save))
+        
+        self.imgs_to_save = (self.imgs_to_save * 2**8).astype(np.uint8)
+        
+        saveImg = Image.fromarray(self.imgs_to_save)
+        saveImg.save(os.path.join(self.save_dir, 'ImageReconstructions.png'))
+         
 
     def Train(self):
         ''' train XAE model '''
         
         print('training for', self.epochs, 'epochs')
         
-        # TODO: instantiate arrays for transformed data to save
+        # configure history save file
         
         history_columns = ['epoch',
                            'ImageAutoencoderLoss',
@@ -363,10 +402,15 @@ class XAE():
         
         history_to_save = pd.DataFrame(columns = history_columns)
         
+        self.InitImageSaver()
+        
         for epoch in range(self.epochs):
                 
             print('Epoch {} started'.format(epoch))
             
+            self.AddReconstructionsToSaver()
+
+        
             # fit autoencoders
             
             print('fitting image autoencoder')
@@ -398,7 +442,6 @@ class XAE():
                                        y = [recreated_imgs, recreated_omes],
                                        epochs = 1,
                                        batch_size = self.batch_size)
-            
             # save histories
                         
             history_vals = [epoch,
@@ -409,35 +452,29 @@ class XAE():
             history_to_save = history_to_save.append(dict(zip(history_columns, 
                                                               history_vals)),
                                    ignore_index = True)
-                        
-            # TODO: save images
-            self.SaveImages()
-
-            # TODO: save models at certain epochs w/ epoch # in filename            
+            
             if self.do_save_model:
-                self.SaveModel()
-                
-        history_to_save.to_csv(os.path.join(self.save_dir,
-                                            'history.csv'), index = False)
-
-
-    def SaveImages(self):
-        ''' save sample input imags and reconstructions '''
+                self.SaveModel(epoch)
+                                
         
-        print('saving images...')
+        self.SaveImages()
         
-        #self.save_tmp_images(real_A, real_B, 
-        #synthetic_image_A, synthetic_image_B)
-
-
-
-    def SaveModel(self):
+        history_to_save.to_csv(os.path.join(self.save_dir, 'history.csv'), 
+                               index = False)
+        
+        
+    def SaveModel(self, epoch):
         ''' save XAE model '''
         
         print('saving models to file system')
-        self.C_C.save_weights(os.path.join(self.save_dir, 'xae.h5'))
-        self.I_A.save_weights(os.path.join(self.save_dir, 'image_ae.h5'))
-        self.O_A.save_weights(os.path.join(self.save_dir, 'omic_ae.h5'))
+        self.C_C.save_weights(os.path.join(self.save_dir, 
+                                           'epoch_' + str(epoch) + '_XAE.h5'))
+        
+        self.I_A.save_weights(os.path.join(self.save_dir, 
+                                           'epoch_' + str(epoch) + 'I_A.h5'))
+        
+        self.O_A.save_weights(os.path.join(self.save_dir, 
+                                           'epoch_' + str(epoch) + 'O_A.h5'))
          
 
     def Test(self):
