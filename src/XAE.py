@@ -425,8 +425,7 @@ class XAE():
             history_vals = [epoch,
                             I_A_history.history['loss'][0],
                             O_A_history.history['loss'][0],
-                            C_C_history.history['loss'][0],
-                            C_C_history.history['loss'][1]]
+                            C_C_history.history['loss'][0]]
             
             history_to_save = history_to_save.append(dict(zip(history_columns, 
                                                               history_vals)),
