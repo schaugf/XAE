@@ -30,7 +30,7 @@ class XAE():
                  learning_rate = 2e-4,
                  lambda_1 = 10.0,
                  lambda_2 = 10.0,
-                 beta_1 = 0.5,
+                 beta_1 = 0.9,
                  beta_2 = 0.99, 
                  latent_dim = 8, 
                  inter_dim = 64,
@@ -43,7 +43,8 @@ class XAE():
                  do_save_images = True,
                  n_imgs_to_save = 30,
                  is_testing = False,
-                 test_rand_add = 0  # between 0 and 1
+                 test_rand_add = 0,  # between 0 and 1
+                 verbose = 1
                  ):
         
         # instantiate self parameters
@@ -63,8 +64,6 @@ class XAE():
         self.data_dir = os.path.join(self.project_dir, data_dir)
         self.save_dir = os.path.join(self.project_dir, save_dir)
         
-        self.date_time = time.strftime('%Y%m%d-%H%M%S', time.localtime())
-        
         self.save_dir = save_dir
         self.do_save_model = do_save_model
         self.do_save_images = do_save_images
@@ -72,10 +71,13 @@ class XAE():
         self.is_testing = is_testing
         self.test_rand_add = test_rand_add
         
+        self.verbose = verbose
+        
         # create filesystem if not already done
         
         os.makedirs(self.save_dir, exist_ok = True)
-
+        self.date_time = time.strftime('%Y%m%d-%H%M%S', time.localtime())
+        
         # load data
         
         if self.is_testing:
@@ -158,17 +160,43 @@ class XAE():
         
         # plot models
         
+        plot_model(self.I_E,
+                   to_file = os.path.join(self.save_dir, 'image_encoder.png'),
+                   show_shapes = True)
+        
+        plot_model(self.I_D,
+                   to_file = os.path.join(self.save_dir, 'image_decoder.png'),
+                   show_shapes = True)
+        
         plot_model(self.I_A,
                    to_file = os.path.join(self.save_dir, 'image_AE.png'), 
-                   show_shapes=True)
+                   show_shapes = True)
                 
+        plot_model(self.O_E,
+                   to_file = os.path.join(self.save_dir, 'omic_encoder.png'),
+                   show_shapes = True)
+        
+        plot_model(self.O_D,
+                   to_file = os.path.join(self.save_dir, 'omic_decoder.png'),
+                   show_shapes = True)
+        
         plot_model(self.O_A,
                    to_file = os.path.join(self.save_dir, 'omic_AE.png'), 
-                   show_shapes=True)        
+                   show_shapes = True)        
+        
+        plot_model(self.I2O,
+                   to_file = os.path.join(self.save_dir, 'image2omic.png'),
+                   show_shapes = True)
+        
+        plot_model(self.O2I,
+                   to_file = os.path.join(self.save_dir, 'omic2image.png'),
+                   show_shapes = True)
         
         plot_model(self.C_C, 
                    to_file = os.path.join(self.save_dir, 'cycle_model.png'), 
-                   show_shapes=True)
+                   show_shapes = True)
+        
+        
 
         self.Train()
         
@@ -513,13 +541,15 @@ class XAE():
             I_A_history = self.I_A.fit(x = self.img_train,
                                        y = self.img_train,
                                        epochs = 1,
-                                       batch_size = self.batch_size)
+                                       batch_size = self.batch_size,
+                                       verbose = self.verbose)
             
             print('fitting omic autoencoder')
             O_A_history = self.O_A.fit(x = self.ome_train,
                                        y = self.ome_train,
                                        epochs = 1,
-                                       batch_size = self.batch_size)
+                                       batch_size = self.batch_size,
+                                       verbose = self.verbose)
             
             # fit domain translator
             
@@ -527,7 +557,8 @@ class XAE():
             C_C_history = self.C_C.fit(x = [self.img_train, self.ome_train],
                                        y = [self.img_train, self.ome_train],
                                        epochs = 1,
-                                       batch_size = self.batch_size)
+                                       batch_size = self.batch_size,
+                                       verbose = self.verbose)
             
             # append histories
 
@@ -633,6 +664,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_images', type = bool, default = True)
     parser.add_argument('--is_testing', type = bool, default = True)
     parser.add_argument('--test_rand_add', type = float, default = 0)
+    parser.add_argument('--verbose', type = int, default = 1)
     
     args = parser.parse_args()
     
@@ -652,6 +684,7 @@ if __name__ == '__main__':
                     do_save_model = args.do_save_model,
                     do_save_images = args.do_save_images,
                     is_testing = args.is_testing,
-                    test_rand_add = args.test_rand_add)
+                    test_rand_add = args.test_rand_add,
+                    verbose = args.verbose)
     
     
