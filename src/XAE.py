@@ -1,5 +1,5 @@
 '''
-XAE: Cycle Consistent Cross-Domain Autoencoder Architecture
+XAE: Cycle Consistent Cross-Domain Autoencoder
 '''
 
 import os
@@ -386,6 +386,7 @@ class XAE():
         
         self.img_train = x_train
         self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
+        self.ome_train = self.ome_train
         
         print('original ome train shape', self.ome_train.shape)
         
@@ -496,8 +497,8 @@ class XAE():
             
             # shuffle indices
             
-            shuffle(img_idx)
-            shuffle(ome_idx)
+            #shuffle(img_idx)
+            #shuffle(ome_idx)
             
             self.img_train = self.img_train[img_idx,...]
             self.ome_train = self.ome_train[ome_idx,...]
@@ -608,7 +609,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta_2', type = float, default = 0.99)
     parser.add_argument('--latent_dim', type = int, default = 8)
     parser.add_argument('--batch_size', type = int, default = 32)
-    parser.add_argument('--epochs', type = int, default = 2)
+    parser.add_argument('--epochs', type = int, default = 5)
     parser.add_argument('--n_imgs_to_save', type = int, default = 30)
     parser.add_argument('--project_dir', type = str, default = '.')
     parser.add_argument('--save_dir', type = str, default = 'results/test')
