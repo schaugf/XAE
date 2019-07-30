@@ -580,6 +580,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type = str, default = 'data/test')
     parser.add_argument('--do_save_model', type = bool, default = False)
     parser.add_argument('--do_save_images', type = bool, default = False)
+    parser.add_argument('--is_testing', type = bool, default = True)
     args = parser.parse_args()
     
     
@@ -596,6 +597,7 @@ if __name__ == '__main__':
                     save_dir = args.save_dir,
                     data_dir = args.data_dir,
                     do_save_model = args.do_save_model,
-                    do_save_images = args.do_save_images)
+                    do_save_images = args.do_save_images,
+                    is_testing = args.is_testing)
     
     
