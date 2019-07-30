@@ -389,7 +389,7 @@ class XAE():
         self.img_train = x_train
         self.ome_train = self.img_train.reshape(-1, np.prod(self.img_train.shape[1:]))
                 
-        # add domain-specific info to omic side
+        # TODO: add domain-specific info to omic side
         
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
@@ -436,16 +436,17 @@ class XAE():
         self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
                                            axis = 1)
         
+        self.SaveReconstructionImage()
+        
         
     def SaveReconstructionImage(self):
         ''' save panel of reconstructed images '''
         
-        self.imgs_to_save = (self.imgs_to_save * 255).astype(np.uint8)
+        image_to_save = (self.imgs_to_save * 255).astype(np.uint8)
         
-        for i in range(self.imgs_to_save.shape[2]):
-            single_channel = self.imgs_to_save[...,i]
-        
+        for i in range(image_to_save.shape[2]):
             save_file_name = 'channel_' + str(i) + '_reconstruction.jpg'
+            single_channel = image_to_save[...,i]
             save_image = Image.fromarray(single_channel)
             save_image.save(os.path.join(self.save_dir, save_file_name))
          
