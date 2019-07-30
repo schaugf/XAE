@@ -420,22 +420,26 @@ class XAE():
         
         flat_c_c_recon = np.concatenate(o2i)
         
-        img_to_add = np.concatenate((np.ones((flat_i_a_recon.shape[0], 1, 1)),
+        img_to_add = np.concatenate((np.ones((flat_i_a_recon.shape[0], 
+                                              1, 
+                                              flat_i_a_recon.shape[2])),
                                      flat_i_a_recon,
                                      flat_c_c_recon), axis = 1)
         
         self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
                                            axis = 1)
-    
-        save_stack = np.dstack((self.imgs_to_save,
-                                self.imgs_to_save,
-                                self.imgs_to_save))
-        
-        save_stack = (save_stack * 255).astype(np.uint8)
         
         # save each channel as own file
-                
-        for i in range(save_stack.shape[2]):
+        
+        for i in range(self.imgs_to_save.shape[2]):
+            single_channel = self.imgs_to_save[...,i]
+            
+            save_stack = np.dstack((single_channel,
+                                    single_channel,
+                                    single_channel))
+            
+            save_stack = (save_stack * 255).astype(np.uint8)
+        
             save_file_name = 'channel_' + str(i) + '_reconstruction.jpg'
             save_image = Image.fromarray(save_stack[...,i])
             save_image.save(os.path.join(self.save_dir, save_file_name))
