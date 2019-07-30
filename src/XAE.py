@@ -11,6 +11,7 @@ from keras.layers import Input, Dense, Lambda, Reshape, Flatten
 from keras.layers import Conv2D, Conv2DTranspose
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy
+from keras.utils import plot_model
 from keras import backend as K
 from keras.datasets import mnist
 
@@ -32,12 +33,15 @@ class XAE():
                  beta_2 = 0.99, 
                  latent_dim = 8, 
                  inter_dim = 64,
+                 project_dir = '/Users/schau/projects/XAE',
                  data_dir = 'data/test',
-                 save_dir = '../results/test',
+                 save_dir = 'results/test',
                  epochs = 2,
                  batch_size = 32,
                  do_save_model = False,
-                 n_imgs_to_save = 30
+                 do_save_images = False,
+                 n_imgs_to_save = 30,
+                 is_testing = False
                  ):
         
         # instantiate self parameters
@@ -53,13 +57,16 @@ class XAE():
         self.batch_size = batch_size
         self.n_imgs_to_save = n_imgs_to_save
         
-        self.data_dir = data_dir
-        self.date_time = time.strftime('%Y%m%d-%H%M%S', time.localtime())
-
-        #self.save_dir = os.path.join('results', self.date_time)
-        self.save_dir = save_dir
+        self.project_dir = project_dir
+        self.data_dir = os.path.join(self.project_dir, data_dir)
+        self.save_dir = os.path.join(self.project_dir, save_dir)
         
+        self.date_time = time.strftime('%Y%m%d-%H%M%S', time.localtime())
+        
+        self.save_dir = save_dir
         self.do_save_model = do_save_model
+        self.do_save_images = do_save_images
+        self.is_testing = is_testing
         
         # create filesystem if not already done
         
@@ -67,7 +74,10 @@ class XAE():
 
         # load data
         
-        self.LoadTestData()
+        if self.is_testing:
+            self.LoadTestData()
+        else:
+            self.LoadData()  # from self.data_dir
         
         # configure optimizer
         
@@ -142,6 +152,20 @@ class XAE():
                          loss = C_C_loss,
                          loss_weights = C_C_weights)
         
+        # plot models
+        
+        plot_model(self.I_A,
+                   to_file = os.path.join(self.save_dir, 'image_AE.png'), 
+                   show_shapes=True)
+                
+        plot_model(self.O_A,
+                   to_file = os.path.join(self.save_dir, 'omic_AE.png'), 
+                   show_shapes=True)        
+        
+        plot_model(self.C_C, 
+                   to_file = os.path.join(self.save_dir, 'cycle_model.png'), 
+                   show_shapes=True)
+
         self.Train()
         
         self.EncodeData()
@@ -164,7 +188,8 @@ class XAE():
         
         x = Flatten()(x)
         
-        x = Dense(self.inter_dim, activation = 'relu')(x)
+        x = Dense(self.inter_dim, 
+                  activation = 'relu')(x)
         
         # reparameterization trick
         
@@ -187,12 +212,22 @@ class XAE():
         
         x = Reshape(self.img_shape)(x)
         
+        x = Conv2DTranspose(filters = 4,
+                            kernel_size = 3,
+                            activation='sigmoid',
+                            padding='same')(x)
+        
+        x = Conv2DTranspose(filters = 8,
+                            kernel_size = 3,
+                            activation='sigmoid',
+                            padding='same')(x)
+        
         x = Conv2DTranspose(filters = 16,
                             kernel_size = 3,
                             activation='sigmoid',
                             padding='same')(x)
         
-        image_output = Conv2DTranspose(filters = 1,
+        image_output = Conv2DTranspose(filters = self.img_shape[2],
                                        kernel_size = 3,
                                        activation='sigmoid',
                                        padding='same')(x)
@@ -205,11 +240,17 @@ class XAE():
     def OmicEncoder(self, name = None):
         ''' Encode genomic profile into shared latent space '''
         
-        x = Dense(self.inter_dim, activation = 'relu')(self.omic_input)
+        x = Dense(self.inter_dim * 8, 
+                  activation = 'sigmoid')(self.omic_input)
         
-        x = Dense(self.inter_dim, activation = 'relu')(x)
+        x = Dense(self.inter_dim * 4, 
+                  activation = 'sigmoid')(x)
         
-        x = Dense(self.latent_dim, activation = 'relu')(x)
+        x = Dense(self.inter_dim * 2, 
+                  activation = 'sigmoid')(x)
+        
+        x = Dense(self.latent_dim, 
+                  activation = 'relu')(x)
         
         # reparameterization trick
         
@@ -227,9 +268,14 @@ class XAE():
         
         omic_decoder_input = Input(shape = (self.latent_dim,))
         
-        x = Dense(self.inter_dim, activation = 'relu')(omic_decoder_input) 
+        x = Dense(self.inter_dim * 2, 
+                  activation = 'relu')(omic_decoder_input) 
 
-        x = Dense(self.inter_dim, activation = 'relu')(x) 
+        x = Dense(self.inter_dim * 4, 
+                  activation = 'relu')(x) 
+        
+        x = Dense(self.inter_dim * 8, 
+                  activation = 'relu')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
                             activation = 'relu')(x)
@@ -307,8 +353,31 @@ class XAE():
     def LoadData(self):
         ''' load imaging and omics datasets'''
         
-        # TODO: point to actual data
         print('loading data...')
+        
+        # load and preprocess imaging data
+        
+        self.img_train = np.load(os.path.join(self.data_dir, 
+                                              'images.npy'))
+        
+        self.img_train = self.img_train.astype(np.float32) / 255
+        
+        # load and preprocess omics data
+        
+        self.ome_train = pd.read_csv(os.path.join(self.data_dir, 'omics.csv'))
+
+        # strip off first five columns of omics
+        
+        self.ome_train = self.ome_train.drop(self.ome_train.columns[0:5], 
+                                             axis = 1)
+        
+        self.ome_train = np.array(self.ome_train).astype(np.float32)
+        
+        self.img_shape = self.img_train.shape[1:]
+        self.ome_shape = self.ome_train.shape[1:]
+        
+        print('training image shape', self.img_train.shape)
+        print('training omic shape', self.ome_train.shape)
         
     
     def LoadTestData(self):
@@ -326,10 +395,7 @@ class XAE():
         
         self.img_train = x_train
         self.ome_train = self.img_train.reshape(-1, np.prod(self.img_train.shape[1:]))
-        
-        self.img_test = x_test
-        self.ome_test = self.img_test.reshape(-1, np.prod(self.img_test.shape[1:]))
-        
+                
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
         
@@ -347,7 +413,10 @@ class XAE():
                 
         self.imgs_to_save_stack = self.img_train[0:self.n_imgs_to_save,:]
         
+        # TODO: fix this for multichannel cases
         self.imgs_to_save = np.concatenate(self.imgs_to_save_stack)
+        
+        print('images to save have shape', self.imgs_to_save.shape)
         
     
     def AddReconstructionsToSaver(self):
@@ -359,6 +428,10 @@ class XAE():
         
         i2o = self.I2O.predict(self.imgs_to_save_stack)
         o2i = self.O2I.predict(i2o)
+        
+        # TODO: extend this to omics domain
+        # TODO: generate one figure per channel
+        
         flat_c_c_recon = np.concatenate(o2i)
         
         img_to_add = np.concatenate((np.ones((flat_i_a_recon.shape[0], 1, 1)),
@@ -420,6 +493,7 @@ class XAE():
                                        y = [self.img_train, self.ome_train],
                                        epochs = 1,
                                        batch_size = self.batch_size)
+            
             # append histories
 
             history_vals = [epoch,
@@ -430,12 +504,11 @@ class XAE():
             history_to_save = history_to_save.append(dict(zip(history_columns, 
                                                               history_vals)),
                                                      ignore_index = True)
-            
-            self.AddReconstructionsToSaver()
+            if self.do_save_images:
+                self.AddReconstructionsToSaver()
 
             if self.do_save_model:
                 self.SaveModel(epoch)
-                                        
                 
         history_to_save.to_csv(os.path.join(self.save_dir, 'history.csv'), 
                                index = False)
@@ -487,9 +560,16 @@ class XAE():
         omics2images = self.O2I.predict(self.ome_train)
         np.save(os.path.join(self.save_dir, 'omics2images.npy'), omics2images)
         
+    
+    def WalkFeatureSpace(self):
+        ''' walk feature space between domains '''
+        
+        # TODO: this whole thing
+        print('walking feature space...')
         
 
 if __name__ == '__main__':
+    
     parser = argparse.ArgumentParser(description = 'build XAE model')
     parser.add_argument('--learning_rate', type = float, default = 2e-4)
     parser.add_argument('--lambda_1', type = float, default = 10.0)
@@ -505,6 +585,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_model', type = bool, default = False)
     args = parser.parse_args()
     
+    
     xae_model = XAE(learning_rate = args.learning_rate,
                     lambda_1 = args.lambda_1,
                     lambda_2 = args.lambda_2,
@@ -517,4 +598,5 @@ if __name__ == '__main__':
                     save_dir = args.save_dir,
                     data_dir = args.data_dir,
                     do_save_model = args.do_save_model)
+    
     
