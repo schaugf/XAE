@@ -311,11 +311,12 @@ class XAE():
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.img_shape)
         
-        kl_loss = 0.5 * K.sum(K.exp(self.img_z_log_var) +
-                              K.square(self.img_z_mean) -
+        kl_loss = -0.5 * K.sum(1 +
                               self.img_z_log_var -
-                              1.,
-                              axis = 1)
+                              K.square(self.img_z_mean) -
+                              K.exp(self.img_z_log_var), 
+                              axis = -1)
+        
         
         return K.mean(rec_loss + kl_loss)
 
@@ -323,13 +324,16 @@ class XAE():
     def OmeVAELoss(self, y_true, y_pred):
         ''' compute vae loss for omic vae '''
         
-        rec_loss = 0.5 * K.sum(K.square(y_true - y_pred), axis = 1)
-                
-        kl_loss = 0.5 * K.sum(K.exp(self.ome_z_log_var) +
-                              K.square(self.ome_z_mean) -
-                              self.ome_z_log_var -
-                              1.,
-                              axis = 1)
+        #rec_loss = 0.5 * K.sum(K.square(y_true - y_pred), axis = 1)
+        
+        rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
+        rec_loss *= np.prod(self.ome_shape)
+        
+        kl_loss = -0.5 * K.sum(1 +
+                               self.ome_z_log_var - 
+                               K.square(self.ome_z_mean) -
+                               K.exp(self.ome_z_log_var),
+                               axis = 1)
                                             
         return K.mean(rec_loss + kl_loss)
         
@@ -388,10 +392,11 @@ class XAE():
         self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
         self.ome_train = self.ome_train
         
-        print('original ome train shape', self.ome_train.shape)
+        print('original omic train shape', self.ome_train.shape)
+
+        # add "domain specific" information to omic profile
         
         if self.test_rand_add != 0:
-            # add "domain specific" information to omic profile
             n_samples_to_add = int(self.ome_train.shape[1] * 
                                    self.test_rand_add /
                                    (1 - self.test_rand_add))
@@ -404,11 +409,12 @@ class XAE():
                                               np.prod(shape_to_add))
             
             reshape_samples = np.reshape(random_samples, shape_to_add)
-            # append to right of array
+
             self.ome_train = np.concatenate((self.ome_train,
                                             reshape_samples), axis = 1)
 
-        print('modified ome train shape', self.ome_train.shape)
+
+        print('modified omic train shape', self.ome_train.shape)
 
         self.ome_shape = self.ome_train.shape[1:]
         self.img_shape = self.img_train.shape[1:]
@@ -497,8 +503,8 @@ class XAE():
             
             # shuffle indices
             
-            #shuffle(img_idx)
-            #shuffle(ome_idx)
+            shuffle(img_idx)
+            shuffle(ome_idx)
             
             self.img_train = self.img_train[img_idx,...]
             self.ome_train = self.ome_train[ome_idx,...]
