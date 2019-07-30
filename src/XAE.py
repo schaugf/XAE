@@ -40,10 +40,10 @@ class XAE():
                  epochs = 2,
                  batch_size = 32,
                  do_save_model = False,
-                 do_save_images = False,
+                 do_save_images = True,
                  n_imgs_to_save = 30,
                  is_testing = False,
-                 test_rand_add = 0
+                 test_rand_add = 0  # between 0 and 1
                  ):
         
         # instantiate self parameters
@@ -384,18 +384,36 @@ class XAE():
         x_train = x_train.astype('float32') / 255
         x_test = x_test.astype('float32') / 255
         
-        # subset data for quick prototyping
-        
         self.img_train = x_train
-        self.ome_train = self.img_train.reshape(-1, np.prod(self.img_train.shape[1:]))
-                
-        # TODO: add domain-specific info to omic side
+        self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
         
-        self.img_shape = self.img_train.shape[1:]
+        print('original ome train shape', self.ome_train.shape)
+        
+        if self.test_rand_add != 0:
+            # add "domain specific" information to omic profile
+            n_samples_to_add = int(self.ome_train.shape[1] * 
+                                   self.test_rand_add /
+                                   (1 - self.test_rand_add))
+            
+            shape_to_add = (self.ome_train.shape[0], n_samples_to_add)
+            sample_space = np.reshape(self.ome_train, -1)
+            
+            print('adding samples', n_samples_to_add)
+            random_samples = np.random.choice(sample_space, 
+                                              np.prod(shape_to_add))
+            
+            reshape_samples = np.reshape(random_samples, shape_to_add)
+            # append to right of array
+            self.ome_train = np.concatenate((self.ome_train,
+                                            reshape_samples), axis = 1)
+
+        print('modified ome train shape', self.ome_train.shape)
+
         self.ome_shape = self.ome_train.shape[1:]
-        
-        print('training image shape', self.img_train.shape)
-        print('training omic shape', self.ome_train.shape)
+        self.img_shape = self.img_train.shape[1:]
+
+        print('training image shape', self.img_shape)
+        print('training omic shape', self.ome_shape)
         
         # save labels for further analysis
         
@@ -521,9 +539,7 @@ class XAE():
 
             if self.do_save_model:
                 self.SaveModel(epoch)
-                
-        self.SaveReconstructionImage()
-        
+                        
         history_to_save.to_csv(os.path.join(self.save_dir, 'history.csv'), 
                                index = False)
         
@@ -598,7 +614,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_dir', type = str, default = 'results/test')
     parser.add_argument('--data_dir', type = str, default = 'data/test')
     parser.add_argument('--do_save_model', type = bool, default = False)
-    parser.add_argument('--do_save_images', type = bool, default = False)
+    parser.add_argument('--do_save_images', type = bool, default = True)
     parser.add_argument('--is_testing', type = bool, default = True)
     parser.add_argument('--test_rand_add', type = float, default = 0)
     
