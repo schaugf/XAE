@@ -41,7 +41,7 @@ class XAE():
                  do_save_model = False,
                  do_save_images = False,
                  n_imgs_to_save = 30,
-                 is_testing = False
+                 is_testing = True,
                  ):
         
         # instantiate self parameters
@@ -278,7 +278,7 @@ class XAE():
                   activation = 'sigmoid')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
-                            activation = 'relu')(x)
+                            activation = 'LeakyReLu')(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
@@ -326,7 +326,7 @@ class XAE():
         rec_loss = binary_crossentropy(K.flatten(y_true), 
                                        K.flatten(y_pred))
         
-        rec_loss *= np.prod(self.img_shape)
+        rec_loss *= np.prod(self.ome_shape)
         
         kl_loss = (1 + 
                    self.ome_z_log_var - 
