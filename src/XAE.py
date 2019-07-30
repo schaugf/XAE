@@ -278,7 +278,7 @@ class XAE():
                   activation = 'sigmoid')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
-                            activation = 'sigmoid')(x)
+                            activation = 'relu')(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
@@ -375,7 +375,7 @@ class XAE():
         
         # normalize
         
-        self.ome_train = self.ome_train / np.max(self.ome_train, axis = 0)
+        self.ome_train = np.log(self.ome_train + 1)
         
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
