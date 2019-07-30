@@ -23,7 +23,7 @@ os.environ['HDF5_USE_FILE_LOCKING']='FALSE'
 
 
 class XAE():
-    ''' Instantiate a cycle consistent cross-domain autoencoder '''
+    ''' instantiate a cycle consistent cross-domain autoencoder '''
     
     def __init__(self, 
                  learning_rate = 2e-4,
@@ -172,7 +172,7 @@ class XAE():
         
         
     def ImageEncoder(self, name = None):
-        ''' Encode image into shared latent space '''
+        ''' encode image into shared latent space '''
         
         x = Conv2D(filters = 16, 
                    kernel_size = 3, 
@@ -203,7 +203,7 @@ class XAE():
     
     
     def ImageDecoder(self, name = None):
-        ''' Decode latent space into image domain '''
+        ''' decode latent space into image domain '''
 
         image_decoder_input = Input(shape = (self.latent_dim,))
         
@@ -238,7 +238,7 @@ class XAE():
         
     
     def OmicEncoder(self, name = None):
-        ''' Encode genomic profile into shared latent space '''
+        ''' encode genomic profile into shared latent space '''
         
         x = Dense(self.inter_dim * 8, 
                   activation = 'sigmoid')(self.omic_input)
@@ -264,7 +264,7 @@ class XAE():
     
     
     def OmicDecoder(self, name = None):
-        ''' Decode latent space into omic domain '''
+        ''' decode latent space into omic domain '''
         
         omic_decoder_input = Input(shape = (self.latent_dim,))
         
@@ -286,7 +286,7 @@ class XAE():
     
     
     def ImageAutoencoder(self, name = None):
-        ''' Combine image encoder and decoder '''
+        ''' combine image encoder and decoder '''
 
         return Model(inputs = self.image_input, 
                      outputs = self.I_D(self.I_E(self.image_input)), 
@@ -294,7 +294,7 @@ class XAE():
     
     
     def OmicAutoencoder(self, name = None):
-        ''' Combine omic encoder and decoder '''
+        ''' combine omic encoder and decoder '''
         
         return Model(inputs = self.omic_input,
                      outputs = self.O_D(self.O_E(self.omic_input)),
@@ -302,7 +302,7 @@ class XAE():
     
           
     def ImgVAELoss(self, y_true, y_pred):
-        ''' Compute vae loss for image vae'''
+        ''' compute vae loss for image vae'''
         
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         
@@ -316,7 +316,7 @@ class XAE():
 
 
     def OmeVAELoss(self, y_true, y_pred):
-        ''' Compute vae loss for omic vae '''
+        ''' compute vae loss for omic vae '''
         
         rec_loss = 0.5 * K.sum(K.square(y_true - y_pred), axis = 1)
                 
@@ -330,7 +330,7 @@ class XAE():
         
     
     def Sampling(self, args):
-        ''' Reparameterization trick by sampling '''
+        ''' reparameterization trick by sampling '''
         
         z_mean, z_log_var = args
         batch = K.shape(z_mean)[0]
@@ -375,7 +375,7 @@ class XAE():
         
     
     def LoadTestData(self):
-        ''' Load testing MNIST data sets '''
+        ''' load testing MNIST data sets '''
         
         print('loading data')
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -407,7 +407,6 @@ class XAE():
                 
         self.imgs_to_save_stack = self.img_train[0:self.n_imgs_to_save,:]
         
-        # TODO: fix this for multichannel cases
         self.imgs_to_save = np.concatenate(self.imgs_to_save_stack)
         
         print('images to save have shape', self.imgs_to_save.shape)
@@ -440,11 +439,12 @@ class XAE():
         
         save_stack = (save_stack * 255).astype(np.uint8)
         
-        # TODO: save one image for each channel
-        
-        save_image = Image.fromarray(save_stack)
-        save_image.save(os.path.join(self.save_dir, 
-                                     'ImageReconstructions.png'))
+        # save each channel as own file
+                
+        for i in range(save_stack.shape[2]):
+            save_file_name = 'channel_' + str(i) + '_reconstruction.jpg'
+            save_image = Image.fromarray(save_stack[...,i])
+            save_image.save(os.path.join(self.save_dir, save_file_name))
          
 
     def Train(self):
