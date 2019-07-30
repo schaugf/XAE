@@ -278,7 +278,7 @@ class XAE():
                   activation = 'sigmoid')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
-                            activation = 'relu')(x)
+                            activation = 'sigmoid')(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
