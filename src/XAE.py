@@ -180,20 +180,20 @@ class XAE():
         
         x = Conv2D(filters = 16, 
                    kernel_size = 3, 
-                   activation = 'relu')(self.image_input)
+                   activation = 'sigmoid')(self.image_input)
         
         x = Conv2D(filters = 8, 
                    kernel_size = 3, 
-                   activation = 'relu')(x)
+                   activation = 'sigmoid')(x)
         
         x = Conv2D(filters = 4, 
                    kernel_size = 3, 
-                   activation = 'relu')(x)
+                   activation = 'sigmoid')(x)
         
         x = Flatten()(x)
         
         x = Dense(self.inter_dim, 
-                  activation = 'relu')(x)
+                  activation = 'sigmoid')(x)
         
         # reparameterization trick
         
@@ -282,7 +282,7 @@ class XAE():
                   activation = 'sigmoid')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
-                            activation = 'relu')(x)
+                            activation = 'sigmoid')(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
@@ -323,9 +323,7 @@ class XAE():
 
     def OmeVAELoss(self, y_true, y_pred):
         ''' compute vae loss for omic vae '''
-        
-        #rec_loss = 0.5 * K.sum(K.square(y_true - y_pred), axis = 1)
-        
+                
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.ome_shape)
         
@@ -367,6 +365,7 @@ class XAE():
         
         self.ome_train = self.ome_train.drop(self.ome_train.columns[0:5], 
                                              axis = 1)
+        
         self.ome_train = np.array(self.ome_train).astype(np.float32)
         self.ome_train = np.log(self.ome_train + 1)
         
@@ -412,7 +411,6 @@ class XAE():
 
             self.ome_train = np.concatenate((self.ome_train,
                                             reshape_samples), axis = 1)
-
 
         print('modified omic train shape', self.ome_train.shape)
 
@@ -596,6 +594,17 @@ class XAE():
         
         omics2images = self.O2I.predict(self.ome_train)
         np.save(os.path.join(self.save_dir, 'omics2images.npy'), omics2images)
+        
+        # reconstructions
+        
+        print('generating reconstructions')
+        recon_images = self.I_A.predict(self.img_train)
+        np.save(os.path.join(self.save_dir, 'recon_images.npy'), recon_images)
+        
+        recon_omics = self.O_A.predict(self.ome_train)
+        recon_omics = pd.DataFrame(recon_omics)
+        recon_omics.to_csv(os.path.join(self.save_dir, 'recon_omics.csv'),
+                           index = False)
         
     
     def WalkFeatureSpace(self):
