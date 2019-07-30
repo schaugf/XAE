@@ -305,6 +305,7 @@ class XAE():
         ''' compute vae loss for image vae'''
         
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
+        rec_loss *= np.prod(self.img_shape)
         
         kl_loss = 0.5 * K.sum(K.exp(self.img_z_log_var) +
                               K.square(self.img_z_mean) -
@@ -428,20 +429,15 @@ class XAE():
         
         self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
                                            axis = 1)
+        self.imgs_to_save = (self.imgs_to_save * 255).astype(np.uint8)
         
         # save each channel as own file
         
         for i in range(self.imgs_to_save.shape[2]):
             single_channel = self.imgs_to_save[...,i]
-            
-            save_stack = np.dstack((single_channel,
-                                    single_channel,
-                                    single_channel))
-            
-            save_stack = (save_stack * 255).astype(np.uint8)
         
             save_file_name = 'channel_' + str(i) + '_reconstruction.jpg'
-            save_image = Image.fromarray(save_stack[...,i])
+            save_image = Image.fromarray(single_channel)
             save_image.save(os.path.join(self.save_dir, save_file_name))
          
 
