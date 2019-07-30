@@ -55,13 +55,15 @@ class XAE():
         
         self.data_dir = data_dir
         self.date_time = time.strftime('%Y%m%d-%H%M%S', time.localtime())
+
         #self.save_dir = os.path.join('results', self.date_time)
         self.save_dir = save_dir
         
         self.do_save_model = do_save_model
         
-        os.makedirs(self.save_dir, exist_ok = True)
+        # create filesystem if not already done
         
+        os.makedirs(self.save_dir, exist_ok = True)
 
         # load data
         
@@ -132,11 +134,9 @@ class XAE():
         
         self.C_C.summary()
         
-        C_C_loss = ['binary_crossentropy', 
-                    'binary_crossentropy']
+        C_C_loss = [self.ImgVAELoss, self.OmeVAELoss]
         
-        C_C_weights = [self.lambda_1, 
-                       self.lambda_2]
+        C_C_weights = [self.lambda_1, self.lambda_2]
         
         self.C_C.compile(optimizer = self.optimizer,
                          loss = C_C_loss,
@@ -280,7 +280,7 @@ class XAE():
         rec_loss = binary_crossentropy(K.flatten(y_true), 
                                        K.flatten(y_pred))
         
-        rec_loss *= np.prod(self.img_shape)         
+        rec_loss *= np.prod(self.img_shape)
         
         kl_loss = (1 + 
                    self.ome_z_log_var - 
