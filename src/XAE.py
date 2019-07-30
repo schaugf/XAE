@@ -304,18 +304,13 @@ class XAE():
     def ImgVAELoss(self, y_true, y_pred):
         ''' Compute vae loss for image vae'''
         
-        rec_loss = binary_crossentropy(K.flatten(y_true), 
-                                       K.flatten(y_pred))
+        rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         
-        rec_loss *= np.prod(self.img_shape)  
-        
-        kl_loss = (1 + 
-                   self.img_z_log_var - 
-                   K.square(self.img_z_mean) - 
-                   K.exp(self.img_z_log_var))
-        
-        kl_loss = K.sum(kl_loss, axis = -1)
-        kl_loss *= -0.5
+        kl_loss = 0.5 * K.sum(K.exp(self.img_z_log_var) +
+                              K.square(self.img_z_mean) -
+                              self.img_z_log_var -
+                              1.,
+                              axis = 1)
         
         return K.mean(rec_loss + kl_loss)
 
@@ -324,7 +319,6 @@ class XAE():
         ''' Compute vae loss for omic vae '''
         
         rec_loss = 0.5 * K.sum(K.square(y_true - y_pred), axis = 1)
-       # return 0.5 * K.sum(K.exp(self.log_var) + K.square(self.mu) - 1. - self.log_var, axis=1)
                 
         kl_loss = 0.5 * K.sum(K.exp(self.ome_z_log_var) +
                               K.square(self.ome_z_mean) -
