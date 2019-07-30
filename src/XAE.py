@@ -250,7 +250,7 @@ class XAE():
                   activation = 'sigmoid')(x)
         
         x = Dense(self.latent_dim, 
-                  activation = 'relu')(x)
+                  activation = 'sigmoid')(x)
         
         # reparameterization trick
         
@@ -269,13 +269,13 @@ class XAE():
         omic_decoder_input = Input(shape = (self.latent_dim,))
         
         x = Dense(self.inter_dim * 2, 
-                  activation = 'relu')(omic_decoder_input) 
+                  activation = 'sigmoid')(omic_decoder_input) 
 
         x = Dense(self.inter_dim * 4, 
-                  activation = 'relu')(x) 
+                  activation = 'sigmoid')(x) 
         
         x = Dense(self.inter_dim * 8, 
-                  activation = 'relu')(x) 
+                  activation = 'sigmoid')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
                             activation = 'relu')(x)
