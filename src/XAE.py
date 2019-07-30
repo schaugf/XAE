@@ -373,6 +373,10 @@ class XAE():
         
         self.ome_train = np.array(self.ome_train).astype(np.float32)
         
+        # normalize
+        
+        self.ome_train = self.ome_train / np.max(self.ome_train, axis = 0)
+        
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
         
