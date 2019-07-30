@@ -278,7 +278,7 @@ class XAE():
                   activation = 'sigmoid')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
-                            activation = 'LeakyReLu')(x)
+                            activation = 'relu')(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
@@ -323,19 +323,15 @@ class XAE():
     def OmeVAELoss(self, y_true, y_pred):
         ''' Compute vae loss for omic vae '''
         
-        rec_loss = binary_crossentropy(K.flatten(y_true), 
-                                       K.flatten(y_pred))
-        
-        rec_loss *= np.prod(self.ome_shape)
-        
-        kl_loss = (1 + 
-                   self.ome_z_log_var - 
-                   K.square(self.ome_z_mean) - 
-                   K.exp(self.ome_z_log_var))
-        
-        kl_loss = K.sum(kl_loss, axis = -1)
-        kl_loss *= -0.5
-        
+        rec_loss = 0.5 * K.sum(K.square(y_true - y_pred), axis = 1)
+       # return 0.5 * K.sum(K.exp(self.log_var) + K.square(self.mu) - 1. - self.log_var, axis=1)
+                
+        kl_loss = 0.5 * K.sum(K.exp(self.ome_z_log_var) +
+                              K.square(self.ome_z_mean) -
+                              self.ome_z_log_var -
+                              1.,
+                              axis = 1)
+                                            
         return K.mean(rec_loss + kl_loss)
         
     
@@ -426,15 +422,14 @@ class XAE():
     def AddReconstructionsToSaver(self):
         ''' add a column of images to a stack '''
         
+        # TODO: this for omics domain
+        
         print('generating predictions for saving')
         i_a_recon = self.I_A.predict(self.imgs_to_save_stack)
         flat_i_a_recon = np.concatenate(i_a_recon)
         
         i2o = self.I2O.predict(self.imgs_to_save_stack)
         o2i = self.O2I.predict(i2o)
-        
-        # TODO: extend this to omics domain
-        # TODO: generate one figure per channel
         
         flat_c_c_recon = np.concatenate(o2i)
         
@@ -450,6 +445,8 @@ class XAE():
                                 self.imgs_to_save))
         
         save_stack = (save_stack * 255).astype(np.uint8)
+        
+        # TODO: save one image for each channel
         
         save_image = Image.fromarray(save_stack)
         save_image.save(os.path.join(self.save_dir, 
