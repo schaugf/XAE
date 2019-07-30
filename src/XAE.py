@@ -7,8 +7,8 @@ import time
 import argparse
 
 from keras.models import Model
-from keras.layers import Input, Dense, Conv2D, Lambda, Reshape, Flatten
-from keras.layers import Conv2DTranspose
+from keras.layers import Input, Dense, Lambda, Reshape, Flatten
+from keras.layers import Conv2D, Conv2DTranspose
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy
 from keras import backend as K
@@ -33,7 +33,7 @@ class XAE():
                  latent_dim = 8, 
                  inter_dim = 64,
                  data_dir = 'data/test',
-                 save_dir = 'results/test',
+                 save_dir = '../results/test',
                  epochs = 2,
                  batch_size = 32,
                  do_save_model = False,
@@ -65,7 +65,7 @@ class XAE():
 
         # load data
         
-        self.LoadData()
+        self.LoadTestData()
         
         # configure optimizer
         
@@ -92,6 +92,9 @@ class XAE():
         self.I_D.summary()
         self.I_A.summary()
         
+        self.I_A.compile(optimizer = self.optimizer,
+                         loss = self.ImgVAELoss)
+        
         # build omic autoencoder
         
         self.O_E = self.OmicEncoder(name = 'omic_encoder')
@@ -102,12 +105,15 @@ class XAE():
         self.O_D.summary()
         self.O_A.summary()
         
+        self.O_A.compile(optimizer = self.optimizer,
+                         loss = self.OmeVAELoss)
+        
         # build symbolic transformation tensors
         
         image2omic = self.O_D(self.I_E(self.image_input))
-        omic2image = self.I_D(self.O_E(self.omic_input))
-        
         rec_image = self.I_D(self.O_E(image2omic))
+
+        omic2image = self.I_D(self.O_E(self.omic_input))        
         rec_omic = self.O_D(self.I_E(omic2image))
         
         # build domain transfer models
@@ -119,7 +125,7 @@ class XAE():
                          outputs = omic2image)
 
         # build cycle model
-
+        
         self.C_C = Model(inputs = [self.image_input, self.omic_input],
                          outputs = [rec_image, rec_omic],
                          name = 'cycle_model')
@@ -131,20 +137,6 @@ class XAE():
         
         C_C_weights = [self.lambda_1, 
                        self.lambda_2]
-        
-        # compile models
-        
-        self.I_A.compile(optimizer = self.optimizer,
-                         loss = self.ImgVAELoss)
-        
-        self.O_A.compile(optimizer = self.optimizer,
-                         loss = self.OmeVAELoss)
-        
-        self.I2O.compile(optimizer = self.optimizer,
-                         loss = binary_crossentropy)
-        
-        self.O2I.compile(optimizer = self.optimizer,
-                         loss = binary_crossentropy)
         
         self.C_C.compile(optimizer = self.optimizer,
                          loss = C_C_loss,
@@ -313,9 +305,14 @@ class XAE():
     
     
     def LoadData(self):
-        ''' Load imaging and omics data sets '''
+        ''' load imaging and omics datasets'''
         
-        # TODO: point to actual datasets
+        # TODO: point to actual data
+        print('loading data...')
+        
+    
+    def LoadTestData(self):
+        ''' Load testing MNIST data sets '''
         
         print('loading data')
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -328,16 +325,21 @@ class XAE():
         # subset data for quick prototyping
         
         self.img_train = x_train
-        self.img_test = x_test
+        self.ome_train = self.img_train.reshape(-1, np.prod(self.img_train.shape[1:]))
         
-        self.ome_train = x_train.reshape(-1, np.prod(x_train.shape[1:]))
-        self.ome_test = x_test.reshape(-1, np.prod(x_test.shape[1:]))
+        self.img_test = x_test
+        self.ome_test = self.img_test.reshape(-1, np.prod(self.img_test.shape[1:]))
         
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
         
         print('training image shape', self.img_train.shape)
         print('training omic shape', self.ome_train.shape)
+        
+        # save labels for further analysis
+        
+        pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 'labels.csv'),
+                                     index = False)
 
 
     def InitImageSaver(self):
@@ -410,40 +412,32 @@ class XAE():
                                        y = self.ome_train,
                                        epochs = 1,
                                        batch_size = self.batch_size)
-                    
-            # generate cross-domain predictions
-            
-            print('generating predictions')
-            synthetic_omes = self.I2O.predict(self.img_train)
-            synthetic_imgs = self.O2I.predict(self.ome_train)
-            
-            recreated_imgs = self.O2I.predict(synthetic_omes)
-            recreated_omes = self.I2O.predict(synthetic_imgs)
-            
             
             # fit domain translator
             
             print('fitting domain translator')
             C_C_history = self.C_C.fit(x = [self.img_train, self.ome_train],
-                                       y = [recreated_imgs, recreated_omes],
+                                       y = [self.img_train, self.ome_train],
                                        epochs = 1,
                                        batch_size = self.batch_size)
-            # save histories
-                        
+            # append histories
+
             history_vals = [epoch,
                             I_A_history.history['loss'][0],
                             O_A_history.history['loss'][0],
-                            C_C_history.history['loss'][0]]
+                            C_C_history.history['loss'][0],
+                            C_C_history.history['loss'][1]]
             
             history_to_save = history_to_save.append(dict(zip(history_columns, 
                                                               history_vals)),
-                                   ignore_index = True)
+                                                     ignore_index = True)
             
             self.AddReconstructionsToSaver()
 
             if self.do_save_model:
                 self.SaveModel(epoch)
                                         
+                
         history_to_save.to_csv(os.path.join(self.save_dir, 'history.csv'), 
                                index = False)
         
@@ -505,7 +499,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta_2', type = float, default = 0.99)
     parser.add_argument('--latent_dim', type = int, default = 8)
     parser.add_argument('--batch_size', type = int, default = 32)
-    parser.add_argument('--epochs', type = int, default = 10)
+    parser.add_argument('--epochs', type = int, default = 2)
     parser.add_argument('--n_imgs_to_save', type = int, default = 30)
     parser.add_argument('--save_dir', type = str, default = 'results/test')
     parser.add_argument('--data_dir', type = str, default = 'data/test')
