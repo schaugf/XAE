@@ -580,9 +580,11 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type = int, default = 32)
     parser.add_argument('--epochs', type = int, default = 2)
     parser.add_argument('--n_imgs_to_save', type = int, default = 30)
+    parser.add_argument('--project_dir', type = str, default = '.')
     parser.add_argument('--save_dir', type = str, default = 'results/test')
     parser.add_argument('--data_dir', type = str, default = 'data/test')
     parser.add_argument('--do_save_model', type = bool, default = False)
+    parser.add_argument('--do_save_images', type = bool, default = False)
     args = parser.parse_args()
     
     
@@ -595,8 +597,10 @@ if __name__ == '__main__':
                     batch_size = args.batch_size,
                     epochs = args.epochs,
                     n_imgs_to_save = args.n_imgs_to_save,
+                    project_dir = args.project_dir,
                     save_dir = args.save_dir,
                     data_dir = args.data_dir,
-                    do_save_model = args.do_save_model)
+                    do_save_model = args.do_save_model,
+                    do_save_images = args.do_save_images)
     
     
