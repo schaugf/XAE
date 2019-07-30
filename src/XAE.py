@@ -41,7 +41,7 @@ class XAE():
                  do_save_model = False,
                  do_save_images = False,
                  n_imgs_to_save = 30,
-                 is_testing = True,
+                 is_testing = False,
                  ):
         
         # instantiate self parameters
@@ -355,16 +355,10 @@ class XAE():
         # load and preprocess omics data
         
         self.ome_train = pd.read_csv(os.path.join(self.data_dir, 'omics.csv'))
-
-        # strip off first five columns of omics
         
         self.ome_train = self.ome_train.drop(self.ome_train.columns[0:5], 
                                              axis = 1)
-        
         self.ome_train = np.array(self.ome_train).astype(np.float32)
-        
-        # normalize
-        
         self.ome_train = np.log(self.ome_train + 1)
         
         self.img_shape = self.img_train.shape[1:]
@@ -580,7 +574,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type = str, default = 'data/test')
     parser.add_argument('--do_save_model', type = bool, default = False)
     parser.add_argument('--do_save_images', type = bool, default = False)
-    parser.add_argument('--is_testing', type = bool, default = True)
+    parser.add_argument('--is_testing', type = bool, default = False)
     args = parser.parse_args()
     
     
