@@ -5,6 +5,7 @@ XAE: Cycle Consistent Cross-Domain Autoencoder Architecture
 import os
 import time
 import argparse
+from random import shuffle
 
 from keras.models import Model
 from keras.layers import Input, Dense, Lambda, Reshape, Flatten
@@ -42,6 +43,7 @@ class XAE():
                  do_save_images = False,
                  n_imgs_to_save = 30,
                  is_testing = False,
+                 test_rand_add = 0
                  ):
         
         # instantiate self parameters
@@ -66,7 +68,9 @@ class XAE():
         self.save_dir = save_dir
         self.do_save_model = do_save_model
         self.do_save_images = do_save_images
+        
         self.is_testing = is_testing
+        self.test_rand_add = test_rand_add
         
         # create filesystem if not already done
         
@@ -385,6 +389,8 @@ class XAE():
         self.img_train = x_train
         self.ome_train = self.img_train.reshape(-1, np.prod(self.img_train.shape[1:]))
                 
+        # add domain-specific info to omic side
+        
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
         
@@ -429,9 +435,12 @@ class XAE():
         
         self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
                                            axis = 1)
-        self.imgs_to_save = (self.imgs_to_save * 255).astype(np.uint8)
         
-        # save each channel as own file
+        
+    def SaveReconstructionImage(self):
+        ''' save panel of reconstructed images '''
+        
+        self.imgs_to_save = (self.imgs_to_save * 255).astype(np.uint8)
         
         for i in range(self.imgs_to_save.shape[2]):
             single_channel = self.imgs_to_save[...,i]
@@ -455,12 +464,25 @@ class XAE():
         
         history_to_save = pd.DataFrame(columns = history_columns)
         
+        # indexes to shuffle
+        
+        img_idx = [i for i in range(len(self.img_train))]
+        ome_idx = [i for i in range(len(self.ome_train))]
+            
         self.InitImageSaver()
         
         for epoch in range(self.epochs):
                 
             print('Epoch {} started'.format(epoch))
-                    
+            
+            # shuffle indices
+            
+            shuffle(img_idx)
+            shuffle(ome_idx)
+            
+            self.img_train = self.img_train[img_idx,...]
+            self.ome_train = self.ome_train[ome_idx,...]
+            
             # fit autoencoders
             
             print('fitting image autoencoder')
@@ -499,6 +521,8 @@ class XAE():
             if self.do_save_model:
                 self.SaveModel(epoch)
                 
+        self.SaveReconstructionImage()
+        
         history_to_save.to_csv(os.path.join(self.save_dir, 'history.csv'), 
                                index = False)
         
@@ -574,7 +598,9 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type = str, default = 'data/test')
     parser.add_argument('--do_save_model', type = bool, default = False)
     parser.add_argument('--do_save_images', type = bool, default = False)
-    parser.add_argument('--is_testing', type = bool, default = False)
+    parser.add_argument('--is_testing', type = bool, default = True)
+    parser.add_argument('--test_rand_add', type = float, default = 0)
+    
     args = parser.parse_args()
     
     
@@ -592,6 +618,7 @@ if __name__ == '__main__':
                     data_dir = args.data_dir,
                     do_save_model = args.do_save_model,
                     do_save_images = args.do_save_images,
-                    is_testing = args.is_testing)
+                    is_testing = args.is_testing,
+                    test_rand_add = args.test_rand_add)
     
     
