@@ -686,6 +686,8 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type = float, default = 2e-4)
     parser.add_argument('--lambda_1', type = float, default = 10.0)
     parser.add_argument('--lambda_2', type = float, default = 10.0)
+    parser.add_argument('--lambda_kli', type = float, default = 1.0)
+    parser.add_argument('--lambda_klo', type = float, default = 1.0)
     parser.add_argument('--beta_1', type = float, default = 0.9)
     parser.add_argument('--beta_2', type = float, default = 0.99)
     parser.add_argument('--latent_dim', type = int, default = 8)
@@ -707,6 +709,8 @@ if __name__ == '__main__':
     xae_model = XAE(learning_rate = args.learning_rate,
                     lambda_1 = args.lambda_1,
                     lambda_2 = args.lambda_2,
+                    lambda_kli = args.lambda_kli,
+                    lambda_klo = args.lambda_klo,
                     beta_1 = args.beta_1,
                     beta_2 = args.beta_2,
                     latent_dim = args.latent_dim,
