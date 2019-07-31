@@ -30,6 +30,8 @@ class XAE():
                  learning_rate = 2e-4,
                  lambda_1 = 10.0,
                  lambda_2 = 10.0,
+                 lambda_kli = 1.0,
+                 lambda_klo = 1.0,
                  beta_1 = 0.9,
                  beta_2 = 0.99, 
                  latent_dim = 8, 
@@ -52,6 +54,8 @@ class XAE():
         self.lr = learning_rate
         self.lambda_1 = lambda_1
         self.lambda_2 = lambda_2
+        self.lambda_kli = lambda_kli
+        self.lambda_klo = lambda_klo
         self.beta_1 = beta_1
         self.beta_2 = beta_2
         self.latent_dim = latent_dim
@@ -158,7 +162,17 @@ class XAE():
                          loss = C_C_loss,
                          loss_weights = C_C_weights)
         
-        # plot models
+        self.SavePlotModels()
+        
+        # train and encode data
+
+        self.Train()
+        
+        self.EncodeData()
+
+
+    def SavePlotModels(self):
+        ''' save plots of models as pngs '''        
         
         plot_model(self.I_E,
                    to_file = os.path.join(self.save_dir, 'image_encoder.png'),
@@ -196,20 +210,18 @@ class XAE():
                    to_file = os.path.join(self.save_dir, 'cycle_model.png'), 
                    show_shapes = True)
         
-        # train and encode data
-
-        self.Train()
         
-        self.EncodeData()
-
-    
         
     def ImageEncoder(self, name = None):
         ''' encode image into shared latent space '''
         
-        x = Conv2D(filters = 16, 
+        x = Conv2D(filters = 32, 
                    kernel_size = 3, 
                    activation = 'sigmoid')(self.image_input)
+        
+        x = Conv2D(filters = 16, 
+                   kernel_size = 3, 
+                   activation = 'sigmoid')(x)
         
         x = Conv2D(filters = 8, 
                    kernel_size = 3, 
@@ -260,6 +272,11 @@ class XAE():
                             activation='sigmoid',
                             padding='same')(x)
         
+        x = Conv2DTranspose(filters = 32,
+                            kernel_size = 3,
+                            activation='sigmoid',
+                            padding='same')(x)
+        
         image_output = Conv2DTranspose(filters = self.img_shape[2],
                                        kernel_size = 3,
                                        activation='sigmoid',
@@ -273,8 +290,15 @@ class XAE():
     def OmicEncoder(self, name = None):
         ''' encode genomic profile into shared latent space '''
         
-        x = Dense(self.inter_dim * 8, 
+        
+        x = Dense(self.inter_dim * 32, 
                   activation = 'sigmoid')(self.omic_input)
+        
+        x = Dense(self.inter_dim * 16, 
+                  activation = 'sigmoid')(x)
+        
+        x = Dense(self.inter_dim * 8, 
+                  activation = 'sigmoid')(x)
         
         x = Dense(self.inter_dim * 4, 
                   activation = 'sigmoid')(x)
@@ -308,6 +332,12 @@ class XAE():
                   activation = 'sigmoid')(x) 
         
         x = Dense(self.inter_dim * 8, 
+                  activation = 'sigmoid')(x) 
+        
+        x = Dense(self.inter_dim * 16, 
+                  activation = 'sigmoid')(x) 
+        
+        x = Dense(self.inter_dim * 32, 
                   activation = 'sigmoid')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
@@ -347,7 +377,7 @@ class XAE():
                               axis = -1)
         
         
-        return K.mean(rec_loss + kl_loss)
+        return K.mean(rec_loss + self.lambda_kli * kl_loss)
 
 
     def OmeVAELoss(self, y_true, y_pred):
@@ -362,7 +392,7 @@ class XAE():
                                K.exp(self.ome_z_log_var),
                                axis = 1)
                                             
-        return K.mean(rec_loss + kl_loss)
+        return K.mean(rec_loss + self.lambda_klo * kl_loss)
         
     
     def Sampling(self, args):
