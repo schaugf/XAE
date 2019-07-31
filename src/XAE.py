@@ -196,12 +196,13 @@ class XAE():
                    to_file = os.path.join(self.save_dir, 'cycle_model.png'), 
                    show_shapes = True)
         
-        
+        # train and encode data
 
         self.Train()
         
         self.EncodeData()
-        
+
+    
         
     def ImageEncoder(self, name = None):
         ''' encode image into shared latent space '''
@@ -651,7 +652,7 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type = float, default = 2e-4)
     parser.add_argument('--lambda_1', type = float, default = 10.0)
     parser.add_argument('--lambda_2', type = float, default = 10.0)
-    parser.add_argument('--beta_1', type = float, default = 0.5)
+    parser.add_argument('--beta_1', type = float, default = 0.9)
     parser.add_argument('--beta_2', type = float, default = 0.99)
     parser.add_argument('--latent_dim', type = int, default = 8)
     parser.add_argument('--batch_size', type = int, default = 32)
