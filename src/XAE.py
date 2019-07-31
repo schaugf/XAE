@@ -385,8 +385,10 @@ class XAE():
         
         self.img_train = np.load(os.path.join(self.data_dir, 
                                               'images.npy'))
-        
-        self.img_train = self.img_train.astype(np.float32) / 255
+        if self.img_train.dtype == np.uint16:
+            self.img_train = self.img_train.astype(np.float32) / (2**16 - 1)
+        elif self.img_train.dtype == np.uint8:
+            self.img_train = self.img_train.astype(np.float32) / (2**8 - 1)
         
         # load and preprocess omics data
         
@@ -397,6 +399,8 @@ class XAE():
         
         self.ome_train = np.array(self.ome_train).astype(np.float32)
         self.ome_train = np.log(self.ome_train + 1)
+        self.ome_train = self.ome_train - self.ome_train.min()
+        self.ome_train = self.ome_train / self.ome_train.max()
         
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
