@@ -11,7 +11,7 @@ from keras.models import Model
 from keras.layers import Input, Dense, Lambda, Reshape, Flatten
 from keras.layers import Conv2D, Conv2DTranspose
 from keras.optimizers import Adam
-from keras.losses import binary_crossentropy
+from keras.losses import binary_crossentropy, mse
 from keras.utils import plot_model
 from keras import backend as K
 from keras.datasets import mnist
@@ -213,24 +213,24 @@ class XAE():
         
         x = Conv2D(filters = 32, 
                    kernel_size = 3, 
-                   activation = 'sigmoid')(self.image_input)
+                   activation = 'relu')(self.image_input)
         
         x = Conv2D(filters = 16, 
                    kernel_size = 3, 
-                   activation = 'sigmoid')(x)
+                   activation = 'relu')(x)
         
         x = Conv2D(filters = 8, 
                    kernel_size = 3, 
-                   activation = 'sigmoid')(x)
+                   activation = 'relu')(x)
         
         x = Conv2D(filters = 4, 
                    kernel_size = 3, 
-                   activation = 'sigmoid')(x)
+                   activation = 'relu')(x)
         
         x = Flatten()(x)
         
         x = Dense(self.inter_dim, 
-                  activation = 'sigmoid')(x)
+                  activation = 'relu')(x)
         
         # reparameterization trick
         
@@ -255,23 +255,23 @@ class XAE():
         
         x = Conv2DTranspose(filters = 4,
                             kernel_size = 3,
-                            activation='sigmoid',
-                            padding='same')(x)
+                            activation = 'relu',
+                            padding = 'same')(x)
         
         x = Conv2DTranspose(filters = 8,
                             kernel_size = 3,
-                            activation='sigmoid',
-                            padding='same')(x)
+                            activation = 'relu',
+                            padding = 'same')(x)
         
         x = Conv2DTranspose(filters = 16,
                             kernel_size = 3,
-                            activation='sigmoid',
-                            padding='same')(x)
+                            activation = 'relu',
+                            padding = 'same')(x)
         
         x = Conv2DTranspose(filters = 32,
                             kernel_size = 3,
-                            activation='sigmoid',
-                            padding='same')(x)
+                            activation = 'relu',
+                            padding = 'same')(x)
         
         image_output = Conv2DTranspose(filters = self.img_shape[2],
                                        kernel_size = 3,
@@ -288,22 +288,22 @@ class XAE():
         
         
         x = Dense(self.inter_dim * 32, 
-                  activation = 'sigmoid')(self.omic_input)
+                  activation = 'relu')(self.omic_input)
         
         x = Dense(self.inter_dim * 16, 
-                  activation = 'sigmoid')(x)
+                  activation = 'relu')(x)
         
         x = Dense(self.inter_dim * 8, 
-                  activation = 'sigmoid')(x)
+                  activation = 'relu')(x)
         
         x = Dense(self.inter_dim * 4, 
-                  activation = 'sigmoid')(x)
+                  activation = 'relu')(x)
         
         x = Dense(self.inter_dim * 2, 
-                  activation = 'sigmoid')(x)
+                  activation = 'relu')(x)
         
         x = Dense(self.latent_dim, 
-                  activation = 'sigmoid')(x)
+                  activation = 'relu')(x)
         
         # reparameterization trick
         
@@ -322,22 +322,22 @@ class XAE():
         omic_decoder_input = Input(shape = (self.latent_dim,))
         
         x = Dense(self.inter_dim * 2, 
-                  activation = 'sigmoid')(omic_decoder_input) 
+                  activation = 'relu')(omic_decoder_input) 
 
         x = Dense(self.inter_dim * 4, 
-                  activation = 'sigmoid')(x) 
+                  activation = 'relu')(x) 
         
         x = Dense(self.inter_dim * 8, 
-                  activation = 'sigmoid')(x) 
+                  activation = 'relu')(x) 
         
         x = Dense(self.inter_dim * 16, 
-                  activation = 'sigmoid')(x) 
+                  activation = 'relu')(x) 
         
         x = Dense(self.inter_dim * 32, 
-                  activation = 'sigmoid')(x) 
+                  activation = 'relu')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
-                            activation = 'sigmoid')(x)
+                            activation = 'relu')(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
@@ -366,12 +366,11 @@ class XAE():
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.img_shape)
         
-        kl_loss = -0.5 * K.sum(1 +
-                              self.img_z_log_var -
-                              K.square(self.img_z_mean) -
-                              K.exp(self.img_z_log_var), 
-                              axis = -1)
-        
+        kl_loss = (1 + self.img_z_log_var - 
+                   K.square(self.img_z_mean) - K.exp(self.img_z_log_var))
+                   
+        kl_loss = K.sum(kl_loss, axis = -1)
+        kl_loss *= -0.5       
         
         return K.mean(rec_loss + kl_loss)
 
@@ -379,14 +378,14 @@ class XAE():
     def OmeVAELoss(self, y_true, y_pred):
         ''' compute vae loss for omic vae '''
                 
-        rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
+        rec_loss = mse(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.ome_shape)
         
-        kl_loss = -0.5 * K.sum(1 +
-                               self.ome_z_log_var - 
-                               K.square(self.ome_z_mean) -
-                               K.exp(self.ome_z_log_var),
-                               axis = 1)
+        kl_loss = (1 + self.ome_z_log_var - 
+                   K.square(self.ome_z_mean) - K.exp(self.ome_z_log_var))
+                   
+        kl_loss = K.sum(kl_loss, axis = -1)
+        kl_loss *= -0.5     
                                             
         return K.mean(rec_loss + kl_loss)
         
