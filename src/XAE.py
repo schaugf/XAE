@@ -30,8 +30,6 @@ class XAE():
                  learning_rate = 2e-4,
                  lambda_1 = 10.0,
                  lambda_2 = 10.0,
-                 lambda_kli = 0.5,
-                 lambda_klo = 0.5,
                  beta_1 = 0.9,
                  beta_2 = 0.99, 
                  latent_dim = 8, 
@@ -54,8 +52,6 @@ class XAE():
         self.lr = learning_rate
         self.lambda_1 = lambda_1
         self.lambda_2 = lambda_2
-        self.lambda_kli = lambda_kli
-        self.lambda_klo = lambda_klo
         self.beta_1 = beta_1
         self.beta_2 = beta_2
         self.latent_dim = latent_dim
@@ -377,8 +373,7 @@ class XAE():
                               axis = -1)
         
         
-        return K.mean(2 * (1 - self.lambda_kli) * rec_loss + 
-                      2* self.lambda_kli * kl_loss)
+        return K.mean(rec_loss + kl_loss)
 
 
     def OmeVAELoss(self, y_true, y_pred):
@@ -393,8 +388,7 @@ class XAE():
                                K.exp(self.ome_z_log_var),
                                axis = 1)
                                             
-        return K.mean(2 * (1 - self.lambda_klo) * rec_loss + 
-                      2* self.lambda_klo * kl_loss)
+        return K.mean(rec_loss + kl_loss)
         
     
     def Sampling(self, args):
@@ -699,8 +693,6 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type = float, default = 2e-4)
     parser.add_argument('--lambda_1', type = float, default = 10.0)
     parser.add_argument('--lambda_2', type = float, default = 10.0)
-    parser.add_argument('--lambda_kli', type = float, default = 0.5)
-    parser.add_argument('--lambda_klo', type = float, default = 0.5)
     parser.add_argument('--beta_1', type = float, default = 0.9)
     parser.add_argument('--beta_2', type = float, default = 0.99)
     parser.add_argument('--latent_dim', type = int, default = 8)
@@ -722,8 +714,6 @@ if __name__ == '__main__':
     xae_model = XAE(learning_rate = args.learning_rate,
                     lambda_1 = args.lambda_1,
                     lambda_2 = args.lambda_2,
-                    lambda_kli = args.lambda_kli,
-                    lambda_klo = args.lambda_klo,
                     beta_1 = args.beta_1,
                     beta_2 = args.beta_2,
                     latent_dim = args.latent_dim,
