@@ -1,5 +1,5 @@
 '''
-XAE: Cycle Consistent Cross-Domain Autoencoder
+XAE: cycle consistent crossed autoencoder for domain translation
 '''
 
 import os
@@ -30,8 +30,8 @@ class XAE():
                  learning_rate = 2e-4,
                  lambda_1 = 10.0,
                  lambda_2 = 10.0,
-                 lambda_kli = 1.0,
-                 lambda_klo = 1.0,
+                 lambda_kli = 0.5,
+                 lambda_klo = 0.5,
                  beta_1 = 0.9,
                  beta_2 = 0.99, 
                  latent_dim = 8, 
@@ -377,7 +377,8 @@ class XAE():
                               axis = -1)
         
         
-        return K.mean(rec_loss + self.lambda_kli * kl_loss)
+        return K.mean((1 - self.lambda_kli) * rec_loss + 
+                       self.lambda_kli * kl_loss)
 
 
     def OmeVAELoss(self, y_true, y_pred):
@@ -392,7 +393,8 @@ class XAE():
                                K.exp(self.ome_z_log_var),
                                axis = 1)
                                             
-        return K.mean(rec_loss + self.lambda_klo * kl_loss)
+        return K.mean((1 - self.lambda_klo) * rec_loss + 
+                      self.lambda_klo * kl_loss)
         
     
     def Sampling(self, args):
@@ -486,9 +488,9 @@ class XAE():
         # save both imaging and omics data
         
         print('saving original data')
-        self.ome_train = pd.DataFrame(self.ome_train)
-        self.ome_train.to_csv(os.path.join(self.save_dir, 'input_omics.csv'),
-                              index = False)
+        pd.DataFrame(self.ome_train).to_csv(os.path.join(self.save_dir, 
+                                                        'input_omics.csv'),
+                                            index = False)
         
         np.save(os.path.join(self.save_dir, 'input_images.npy'), 
                 self.img_train)
@@ -697,8 +699,8 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type = float, default = 2e-4)
     parser.add_argument('--lambda_1', type = float, default = 10.0)
     parser.add_argument('--lambda_2', type = float, default = 10.0)
-    parser.add_argument('--lambda_kli', type = float, default = 1.0)
-    parser.add_argument('--lambda_klo', type = float, default = 1.0)
+    parser.add_argument('--lambda_kli', type = float, default = 0.5)
+    parser.add_argument('--lambda_klo', type = float, default = 0.5)
     parser.add_argument('--beta_1', type = float, default = 0.9)
     parser.add_argument('--beta_2', type = float, default = 0.99)
     parser.add_argument('--latent_dim', type = int, default = 8)
