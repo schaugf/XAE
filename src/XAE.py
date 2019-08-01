@@ -39,10 +39,11 @@ class XAE():
                  save_dir = 'results/test',
                  epochs = 2,
                  batch_size = 32,
-                 do_save_model = False,
-                 do_save_images = True,
+                 do_save_model = 0,
+                 do_save_images = 1,
+                 do_save_input_data = 0, 
                  n_imgs_to_save = 30,
-                 is_testing = False,
+                 is_testing = 0,
                  test_rand_add = 0,  # between 0 and 1
                  verbose = 1
                  ):
@@ -67,6 +68,7 @@ class XAE():
         self.save_dir = save_dir
         self.do_save_model = do_save_model
         self.do_save_images = do_save_images
+        self.do_save_input_data = do_save_input_data
         
         self.is_testing = is_testing
         self.test_rand_add = test_rand_add
@@ -480,18 +482,19 @@ class XAE():
         
         # save both imaging and omics data
         
-        print('saving original data')
-        pd.DataFrame(self.ome_train).to_csv(os.path.join(self.save_dir, 
-                                                        'input_omics.csv'),
-                                            index = False)
-        
-        np.save(os.path.join(self.save_dir, 'input_images.npy'), 
-                self.img_train)
-        
-        # save labels for further analysis
-        
-        pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 'labels.csv'),
-                                     index = False)
+        if self.do_save_input_data:
+            print('saving original data')
+            pd.DataFrame(self.ome_train).to_csv(os.path.join(self.save_dir, 
+                                                            'input_omics.csv'),
+                                                index = False)
+            
+            np.save(os.path.join(self.save_dir, 'input_images.npy'), 
+                    self.img_train)
+            
+            # save labels for further analysis
+            
+            pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 'labels.csv'),
+                                         index = False)
 
 
     def InitImageSaver(self):
@@ -701,9 +704,10 @@ if __name__ == '__main__':
     parser.add_argument('--project_dir', type = str, default = '.')
     parser.add_argument('--save_dir', type = str, default = 'results/test')
     parser.add_argument('--data_dir', type = str, default = 'data/test')
-    parser.add_argument('--do_save_model', type = bool, default = False)
-    parser.add_argument('--do_save_images', type = bool, default = True)
-    parser.add_argument('--is_testing', type = bool, default = True)
+    parser.add_argument('--do_save_model', type = int, default = 0)
+    parser.add_argument('--do_save_images', type = int, default = 1)
+    parser.add_argument('--do_save_input_data', type = int, default = 0)
+    parser.add_argument('--is_testing', type = int, default = 1)
     parser.add_argument('--test_rand_add', type = float, default = 0)
     parser.add_argument('--verbose', type = int, default = 1)
     
@@ -724,6 +728,7 @@ if __name__ == '__main__':
                     data_dir = args.data_dir,
                     do_save_model = args.do_save_model,
                     do_save_images = args.do_save_images,
+                    do_save_input_data = args.do_save_input_data,
                     is_testing = args.is_testing,
                     test_rand_add = args.test_rand_add,
                     verbose = args.verbose)
