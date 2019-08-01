@@ -377,8 +377,8 @@ class XAE():
                               axis = -1)
         
         
-        return K.mean((1 - self.lambda_kli) * rec_loss + 
-                       self.lambda_kli * kl_loss)
+        return K.mean(2 * (1 - self.lambda_kli) * rec_loss + 
+                      2* self.lambda_kli * kl_loss)
 
 
     def OmeVAELoss(self, y_true, y_pred):
@@ -393,8 +393,8 @@ class XAE():
                                K.exp(self.ome_z_log_var),
                                axis = 1)
                                             
-        return K.mean((1 - self.lambda_klo) * rec_loss + 
-                      self.lambda_klo * kl_loss)
+        return K.mean(2 * (1 - self.lambda_klo) * rec_loss + 
+                      2* self.lambda_klo * kl_loss)
         
     
     def Sampling(self, args):
