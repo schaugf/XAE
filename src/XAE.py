@@ -483,6 +483,16 @@ class XAE():
         print('training image shape', self.img_shape)
         print('training omic shape', self.ome_shape)
         
+        # save both imaging and omics data
+        
+        print('saving original data')
+        self.ome_train = pd.DataFrame(self.ome_train)
+        self.ome_train.to_csv(os.path.join(self.save_dir, 'input_omics.csv'),
+                              index = False)
+        
+        np.save(os.path.join(self.save_dir, 'input_images.npy'), 
+                self.img_train)
+        
         # save labels for further analysis
         
         pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 'labels.csv'),
@@ -605,14 +615,14 @@ class XAE():
             history_to_save = history_to_save.append(dict(zip(history_columns, 
                                                               history_vals)),
                                                      ignore_index = True)
+            
+            history_to_save.to_csv(os.path.join(self.save_dir, 'history.csv'), 
+                                   index = False)
+            
             if self.do_save_images:
                 self.AddReconstructionsToSaver()
-
-            if self.do_save_model:
-                self.SaveModel(epoch)
                         
-        history_to_save.to_csv(os.path.join(self.save_dir, 'history.csv'), 
-                               index = False)
+        self.SaveModel(epoch)
         
         
     def SaveModel(self, epoch):
@@ -658,6 +668,7 @@ class XAE():
         
         # encode omic -> image
         
+        print('translating omics to imaging domain')
         omics2images = self.O2I.predict(self.ome_train)
         np.save(os.path.join(self.save_dir, 'omics2images.npy'), omics2images)
         
