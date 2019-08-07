@@ -16,6 +16,7 @@ from keras.preprocessing.image import ImageDataGenerator
 from keras.utils import plot_model
 from keras import backend as K
 from keras.datasets import mnist
+from tensorflow_model_optimization.sparsity import keras as sparsity
 
 import numpy as np
 import pandas as pd
@@ -26,7 +27,12 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 # TODO: implement flow, data augmentation
 # TODO: implement cyclic learning rates
 # TODO: make sure all data as float32
-
+# TODO: redefine 'image' and 'omic' as A and B
+# TODO: don't worry about flowing from dir, cells saved as npy
+# TODO: save models to model_dir
+# TODO: implement p(z|a) || p(z|b) (encoder divergence)
+# TODO: save channel reconstructions to 'reconstructions'
+# TODO: append an alpha to penalize kl contribution
 
 class XAE():
     ''' instantiate a cycle consistent cross-domain autoencoder '''
@@ -49,11 +55,10 @@ class XAE():
                  do_save_model = 0,
                  do_save_images = 1,
                  do_save_input_data = 0,
-                 do_flow_images = 0,
                  do_gate_omics = 0,
                  n_imgs_to_save = 30,
                  dataset = 'MNIST',
-                 test_rand_add = 0,  # between 0 and 1
+                 test_rand_add = 0,
                  verbose = 1
                  ):
         
@@ -80,7 +85,6 @@ class XAE():
         self.do_save_model = do_save_model
         self.do_save_images = do_save_images
         self.do_save_input_data = do_save_input_data
-        self.do_flow_images = do_flow_images
         self.do_gate_omics = do_gate_omics
         
         self.dataset = dataset
@@ -94,15 +98,13 @@ class XAE():
         self.date_time = time.strftime('%Y%m%d-%H%M%S', time.localtime())
         
         # load data
-        
-        # TODO: redefine 'image' and 'omic' as A and B
-        
+                
         if self.dataset == 'MNIST':
             self.LoadMNISTData()
         elif self.dataset == 'CelebA':
             self.LoadCelebAData()
         else:
-            self.LoadDataFromDir()  # from self.data_dir
+            self.LoadDataFromDir()
         
         # configure optimizer
         
@@ -168,9 +170,7 @@ class XAE():
                          name = 'cycle_model')
         
         self.C_C.summary()
-        
-        # TODO: implement p(z|x) || p(x|y) (encoder divergence)
-            
+                    
         C_C_loss = [self.ImgVAELoss, self.OmeVAELoss]
         
         C_C_weights = [self.lambda_1, self.lambda_2]
@@ -322,8 +322,26 @@ class XAE():
         
         if self.do_gate_omics:
             print('gating omics input')
-            # TODO: enforce sparsity
-            x = Activation('tanh', name = 'gate_layer')(self.omic_input)
+            
+            #end_step = np.ceil(1.0 * num_train_samples / batch_size).astype(np.int32) * epochs
+            end_step = 10
+            sparse_pd_decay = sparsity.PolynomialDecay(initial_sparsity = 0.50,
+                                                       final_sparsity = 0.90,
+                                                       begin_step = 0,
+                                                       end_step = end_step,
+                                                       frequency = 1)
+            
+            prune_para = {'pruning_schedule': sparse_pd_decay}
+
+            sl = sparsity.prune_low_magnitude(Activation('tanh', 
+                                                        name = 'gate_layer'), 
+                                             input_shape = self.ome_shape,
+                                             **prune_para)
+            print(sl)
+            x = sl(self.omic_input)
+            
+            #(self.omic_input)
+            
             x = Dense(self.inter_dim * 16, 
                       activation = 'relu')(x)
         else:
@@ -439,9 +457,7 @@ class XAE():
         ''' load imaging and omics datasets'''
         
         print('loading data from', self.data_dir)
-        
-        # load and preprocess imaging data
-        
+                
         self.img_train = np.load(os.path.join(self.data_dir, 
                                               'images.npy'))
         
@@ -477,40 +493,14 @@ class XAE():
         print('loading CelebA dataset')
         
         # TODO: check if exists
-        
-        # load temporary image
-        
         # TODO: time how long it takes to load into memory
-        
-        tmp_image = Image.open(os.path.join(self.data_dir, 
-                                            os.listdir(self.data_dir)[0]))
-        
-        self.img_shape = tmp_image.shape + (3,)
-        
-        img_filenames = os.listdir(self.data_dir)
-        n_imgs = len(img_filenames)
-        
-        img_tensor = np.zeros((n_imgs,) + img_shape)
-        
-        print('loading images into tensor')
-        for i in range(n_imgs):
-            img_tensor[i] = Image.open(os.path.join(data_dir, img_filenames[i]))
-        
-        
-        
-        dg = ImageDataGenerator(rescale = 1./(255),
-                                     horizontal_flip = True,
-                                     vertical_flip = True)
-        
-        self.dgen = dg.flow_from_directory(self.data_dir,
-                                           target_size = (self.img_shape[0], 
-                                                          self.img_shape[1]),
-                                          batch_size = self.batch_size,
-                                          color_mode = 'rgb',
-                                          class_mode = 'input',
-                                          shuffle = True)
                                                
  
+    def AddDomainCorruption(self):
+        ''' append domain-specific corruption '''
+        
+        return 0
+    
     
     def LoadMNISTData(self):
         ''' load testing MNIST data sets '''
@@ -530,6 +520,8 @@ class XAE():
         print('original omic train shape', self.ome_train.shape)
 
         # add "domain specific" information to omic profile
+        
+        # TODO: make this its own function
         
         if self.test_rand_add != 0:
             n_samples_to_add = int(self.ome_train.shape[1] * 
@@ -657,41 +649,31 @@ class XAE():
             
             # fit autoencoders
             
-            # TODO: fit with generator
+
+            print('fitting image autoencoder')
+            I_A_history = self.I_A.fit(x = self.img_train,
+                                       y = self.img_train,
+                                       epochs = 1,
+                                       batch_size = self.batch_size,
+                                       verbose = self.verbose)
             
-            if self.do_flow_images:
-                # TODO: how to handle C_C?
-                
-                print('training with flowing images')
-                I_A_history = self.I_A.fit_generator(self.dgen,
-                                                     epochs = self.epochs)
+            print('fitting omic autoencoder')
+            O_A_history = self.O_A.fit(x = self.ome_train,
+                                       y = self.ome_train,
+                                       epochs = 1,
+                                       batch_size = self.batch_size,
+                                       verbose = self.verbose)
             
-            else:
-                print('fitting image autoencoder')
-                I_A_history = self.I_A.fit(x = self.img_train,
-                                           y = self.img_train,
-                                           epochs = 1,
-                                           batch_size = self.batch_size,
-                                           verbose = self.verbose)
-                
-                print('fitting omic autoencoder')
-                O_A_history = self.O_A.fit(x = self.ome_train,
-                                           y = self.ome_train,
-                                           epochs = 1,
-                                           batch_size = self.batch_size,
-                                           verbose = self.verbose)
-                
-                # fit domain translator
-                
-                print('fitting domain translator')
-                C_C_history = self.C_C.fit(x = [self.img_train, 
-                                                self.ome_train],
-                                           y = [self.img_train, 
-                                                self.ome_train],
-                                           epochs = 1,
-                                           batch_size = self.batch_size,
-                                           verbose = self.verbose)
-                
+            # fit domain translator
+            
+            print('fitting domain translator')
+            C_C_history = self.C_C.fit(x = [self.img_train, 
+                                            self.ome_train],
+                                       y = [self.img_train, 
+                                            self.ome_train],
+                                       epochs = 1,
+                                       batch_size = self.batch_size,
+                                       verbose = self.verbose)
             # append histories
 
             history_vals = [epoch,
@@ -781,6 +763,7 @@ class XAE():
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description = 'build XAE model')
+    
     parser.add_argument('--learning_rate', type = float, default = 2e-4)
     parser.add_argument('--lambda_1', type = float, default = 10.0)
     parser.add_argument('--lambda_2', type = float, default = 10.0)
@@ -798,16 +781,14 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_model', type = int, default = 0)
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
-    parser.add_argument('--do_flow_images', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
     parser.add_argument('--dataset', type = str, default = 'MNIST')
     parser.add_argument('--test_rand_add', type = float, default = 0)
-    parser.add_argument('--verbose', type = int, default = 1)
+    parser.add_argument('--verbose', type = int, default = 1)    
     
     args = parser.parse_args()
     
-    #args.data_dir = '/Users/schau/projects/XAE/data/hcc1143/'
-    
+        
     xae_model = XAE(learning_rate = args.learning_rate,
                     lambda_1 = args.lambda_1,
                     lambda_2 = args.lambda_2,
@@ -825,7 +806,6 @@ if __name__ == '__main__':
                     do_save_model = args.do_save_model,
                     do_save_images = args.do_save_images,
                     do_save_input_data = args.do_save_input_data,
-                    do_flow_images = args.do_flow_images,
                     do_gate_omics = args.do_gate_omics,
                     dataset = args.dataset,
                     test_rand_add = args.test_rand_add,
