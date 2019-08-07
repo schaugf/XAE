@@ -12,11 +12,10 @@ from keras.layers import Input, Dense, Lambda, Reshape, Flatten
 from keras.layers import Conv2D, Conv2DTranspose, Activation
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy, mse
-from keras.preprocessing.image import ImageDataGenerator
 from keras.utils import plot_model
 from keras import backend as K
 from keras.datasets import mnist
-from tensorflow_model_optimization.sparsity import keras as sparsity
+#from tensorflow_model_optimization.sparsity import keras as sparsity
 
 import numpy as np
 import pandas as pd
@@ -52,7 +51,7 @@ class XAE():
                  save_dir = 'results/test',
                  epochs = 2,
                  batch_size = 32,
-                 do_save_model = 0,
+                 do_save_models = 0,
                  do_save_images = 1,
                  do_save_input_data = 0,
                  do_gate_omics = 0,
@@ -82,7 +81,7 @@ class XAE():
         self.save_dir = os.path.join(self.project_dir, save_dir)
         
         self.save_dir = save_dir
-        self.do_save_model = do_save_model
+        self.do_save_models = do_save_models
         self.do_save_images = do_save_images
         self.do_save_input_data = do_save_input_data
         self.do_gate_omics = do_gate_omics
@@ -324,23 +323,22 @@ class XAE():
             print('gating omics input')
             
             #end_step = np.ceil(1.0 * num_train_samples / batch_size).astype(np.int32) * epochs
-            end_step = 10
-            sparse_pd_decay = sparsity.PolynomialDecay(initial_sparsity = 0.50,
-                                                       final_sparsity = 0.90,
-                                                       begin_step = 0,
-                                                       end_step = end_step,
-                                                       frequency = 1)
+            #end_step = 10
+            #sparse_pd_decay = sparsity.PolynomialDecay(initial_sparsity = 0.50,
+            #                                           final_sparsity = 0.90,
+            #                                           begin_step = 0,
+            #                                           end_step = end_step,
+            #                                           frequency = 1)
             
-            prune_para = {'pruning_schedule': sparse_pd_decay}
-
-            sl = sparsity.prune_low_magnitude(Activation('tanh', 
-                                                        name = 'gate_layer'), 
-                                             input_shape = self.ome_shape,
-                                             **prune_para)
-            print(sl)
-            x = sl(self.omic_input)
+            #prune_para = {'pruning_schedule': sparse_pd_decay}
+            #sl = sparsity.prune_low_magnitude(Activation('tanh', 
+            #                                            name = 'gate_layer'), 
+            #                                 input_shape = self.ome_shape,
+             #                                **prune_para)
             
             #(self.omic_input)
+            
+            x = Activation('tanh', name = 'gate_layer')(self.omic_input)
             
             x = Dense(self.inter_dim * 16, 
                       activation = 'relu')(x)
@@ -491,7 +489,6 @@ class XAE():
         ''' load testing celebA dataset '''
 
         print('loading CelebA dataset')
-        
         # TODO: check if exists
         # TODO: time how long it takes to load into memory
                                                
@@ -518,8 +515,6 @@ class XAE():
         self.ome_train = self.ome_train
         
         print('original omic train shape', self.ome_train.shape)
-
-        # add "domain specific" information to omic profile
         
         # TODO: make this its own function
         
@@ -580,7 +575,6 @@ class XAE():
         ''' add a column of images to a stack '''
         
         # TODO: this for omics domain
-        
         print('generating predictions for saving')
         i_a_recon = self.I_A.predict(self.imgs_to_save_stack)
         flat_i_a_recon = np.concatenate(i_a_recon)
@@ -690,11 +684,12 @@ class XAE():
             
             if self.do_save_images:
                 self.AddReconstructionsToSaver()
-                        
-        self.SaveModel(epoch)
+        
+        if self.do_save_models:
+            self.SaveModels(epoch)
         
         
-    def SaveModel(self, epoch):
+    def SaveModels(self, epoch):
         ''' save XAE model '''
         
         print('saving models to file system')
@@ -702,10 +697,10 @@ class XAE():
                                            'epoch_' + str(epoch) + '_XAE.h5'))
         
         self.I_A.save_weights(os.path.join(self.save_dir, 
-                                           'epoch_' + str(epoch) + 'I_A.h5'))
+                                           'epoch_' + str(epoch) + '_I_A.h5'))
         
         self.O_A.save_weights(os.path.join(self.save_dir, 
-                                           'epoch_' + str(epoch) + 'O_A.h5'))
+                                           'epoch_' + str(epoch) + '_O_A.h5'))
          
 
     def EncodeData(self):
@@ -778,7 +773,7 @@ if __name__ == '__main__':
     parser.add_argument('--project_dir', type = str, default = '.')
     parser.add_argument('--save_dir', type = str, default = 'results/test')
     parser.add_argument('--data_dir', type = str, default = 'data/test')
-    parser.add_argument('--do_save_model', type = int, default = 0)
+    parser.add_argument('--do_save_models', type = int, default = 0)
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
@@ -803,7 +798,7 @@ if __name__ == '__main__':
                     project_dir = args.project_dir,
                     save_dir = args.save_dir,
                     data_dir = args.data_dir,
-                    do_save_model = args.do_save_model,
+                    do_save_models = args.do_save_models,
                     do_save_images = args.do_save_images,
                     do_save_input_data = args.do_save_input_data,
                     do_gate_omics = args.do_gate_omics,
