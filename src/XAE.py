@@ -513,9 +513,9 @@ class XAE():
         x_train = x_train.astype('float32') / 255
         x_test = x_test.astype('float32') / 255
         
-        self.img_train = x_train[0:300]
+        self.img_train = x_train
         self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
-        self.ome_train = self.ome_train[0:300]
+        self.ome_train = self.ome_train
         
         print('original omic train shape', self.ome_train.shape)
 
