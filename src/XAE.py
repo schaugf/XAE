@@ -9,7 +9,7 @@ from random import shuffle
 
 from keras.models import Model
 from keras.layers import Input, Dense, Lambda, Reshape, Flatten
-from keras.layers import Conv2D, Conv2DTranspose, Activation
+from keras.layers import Conv2D, Conv2DTranspose, Activation, Layer
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy, mse
 from keras.utils import plot_model
@@ -32,6 +32,27 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 # TODO: implement p(z|a) || p(z|b) (encoder divergence)
 # TODO: save channel reconstructions to 'reconstructions'
 # TODO: append an alpha to penalize kl contribution
+
+class GateLayer(Layer):
+    ''' element-wise multiplication gating layer '''
+    
+    def __init__(self, output_dim, **kwargs):
+        self.output_dim = output_dim
+        super(GateLayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+
+        print('gate input shape:', input_shape)
+        self.kernel = self.add_weight(name = 'kernel', 
+                                      shape = (1, input_shape[1]),
+                                      initializer = 'uniform',
+                                      trainable = True)
+        
+        super(GateLayer, self).build(input_shape)  
+        
+    def call(self, x):
+        return x * self.kernel    
+    
 
 class XAE():
     ''' instantiate a cycle consistent cross-domain autoencoder '''
@@ -180,14 +201,19 @@ class XAE():
         
         self.SavePlotModels()
         
-
-        print('layer weights:')
-        print(self.O_E.layers[0].get_weights())
-        
         # train and encode data
 
         self.Train()
         
+        print('saving gating layer')
+        
+        gate_weights = self.O_E.layers[1].get_weights()[0][0]
+        
+        np.savetxt(os.path.join(self.save_dir, 
+                                'gate_weights.csv'), 
+                   gate_weights, 
+                   delimiter = ',')
+
         self.EncodeData()
 
 
@@ -320,25 +346,12 @@ class XAE():
         ''' encode genomic profile into shared latent space '''
         
         if self.do_gate_omics:
-            print('gating omics input')
+            print('gating omics input with input shape', self.ome_shape[0])
             
-            #end_step = np.ceil(1.0 * num_train_samples / batch_size).astype(np.int32) * epochs
-            #end_step = 10
-            #sparse_pd_decay = sparsity.PolynomialDecay(initial_sparsity = 0.50,
-            #                                           final_sparsity = 0.90,
-            #                                           begin_step = 0,
-            #                                           end_step = end_step,
-            #                                           frequency = 1)
+            x = GateLayer(self.ome_shape, 
+                          name = 'gate_layer')(self.omic_input)
             
-            #prune_para = {'pruning_schedule': sparse_pd_decay}
-            #sl = sparsity.prune_low_magnitude(Activation('tanh', 
-            #                                            name = 'gate_layer'), 
-            #                                 input_shape = self.ome_shape,
-             #                                **prune_para)
-            
-            #(self.omic_input)
-            
-            x = Activation('tanh', name = 'gate_layer')(self.omic_input)
+            x = Activation('tanh')(x)
             
             x = Dense(self.inter_dim * 16, 
                       activation = 'relu')(x)
@@ -510,9 +523,9 @@ class XAE():
         x_train = x_train.astype('float32') / 255
         x_test = x_test.astype('float32') / 255
         
-        self.img_train = x_train
+        self.img_train = x_train[0:100]
         self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
-        self.ome_train = self.ome_train
+        self.ome_train = self.ome_train[0:100]
         
         print('original omic train shape', self.ome_train.shape)
         
@@ -687,6 +700,9 @@ class XAE():
         
         if self.do_save_models:
             self.SaveModels(epoch)
+            
+        if self.do_gate_omics:
+            print('saving omics gate')
         
         
     def SaveModels(self, epoch):
@@ -768,7 +784,7 @@ if __name__ == '__main__':
     parser.add_argument('--beta_2', type = float, default = 0.99)
     parser.add_argument('--latent_dim', type = int, default = 8)
     parser.add_argument('--batch_size', type = int, default = 32)
-    parser.add_argument('--epochs', type = int, default = 5)
+    parser.add_argument('--epochs', type = int, default = 1)
     parser.add_argument('--n_imgs_to_save', type = int, default = 30)
     parser.add_argument('--project_dir', type = str, default = '.')
     parser.add_argument('--save_dir', type = str, default = 'results/test')
