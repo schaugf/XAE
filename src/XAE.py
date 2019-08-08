@@ -17,6 +17,7 @@ from keras import backend as K
 from keras.datasets import mnist
 #from tensorflow_model_optimization.sparsity import keras as sparsity
 
+import tensorflow_datasets as tfds
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -79,7 +80,8 @@ class XAE():
                  n_imgs_to_save = 30,
                  dataset = 'MNIST',
                  test_rand_add = 0,
-                 verbose = 1
+                 verbose = 1,
+                 omic_activation = 'relu'
                  ):
         
         # instantiate self parameters
@@ -96,7 +98,7 @@ class XAE():
         self.epochs = epochs
         self.batch_size = batch_size
         self.n_imgs_to_save = n_imgs_to_save
-        
+        self.omic_activation = omic_activation
         self.project_dir = project_dir
         self.data_dir = os.path.join(self.project_dir, data_dir)
         self.save_dir = os.path.join(self.project_dir, save_dir)
@@ -400,7 +402,7 @@ class XAE():
                   activation = 'relu')(x) 
         
         omic_output = Dense(self.ome_shape[0], 
-                            activation = 'linear')(x)  # from relu
+                            activation = self.omic_activation)(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
@@ -501,10 +503,11 @@ class XAE():
     def LoadCelebAData(self):
         ''' load testing celebA dataset '''
 
-        print('loading CelebA dataset')
-        # TODO: check if exists
-        # TODO: time how long it takes to load into memory
-                                               
+        print('loading CelebA dataset...')
+       # train_ds = tfds.load('celeba', split=tfds.Split.TRAIN, batch_size=-1)
+       # numpy_ds = tfds.as_numpy(train_ds)
+       # numpy_images, numpy_labels = numpy_ds["image"], numpy_ds["label"]
+                                       
  
     def AddDomainCorruption(self):
         ''' append domain-specific corruption '''
@@ -796,6 +799,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type = str, default = 'MNIST')
     parser.add_argument('--test_rand_add', type = float, default = 0)
     parser.add_argument('--verbose', type = int, default = 1)    
+    parser.add_argument('--omic_activation', type = str, default = 'relu')
     
     args = parser.parse_args()
     
@@ -820,6 +824,7 @@ if __name__ == '__main__':
                     do_gate_omics = args.do_gate_omics,
                     dataset = args.dataset,
                     test_rand_add = args.test_rand_add,
-                    verbose = args.verbose)
+                    verbose = args.verbose,
+                    omic_activation = args.omic_activation)
     
     
