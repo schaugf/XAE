@@ -17,14 +17,14 @@ from keras import backend as K
 from keras.datasets import mnist
 #from tensorflow_model_optimization.sparsity import keras as sparsity
 
-import tensorflow_datasets as tfds
+#import tensorflow_datasets as tfds
 import numpy as np
 import pandas as pd
 from PIL import Image
 
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
-# TODO: implement flow, data augmentation
+# TODO: implement data augmentation
 # TODO: implement cyclic learning rates
 # TODO: make sure all data as float32
 # TODO: redefine 'image' and 'omic' as A and B
@@ -33,6 +33,7 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 # TODO: implement p(z|a) || p(z|b) (encoder divergence)
 # TODO: save channel reconstructions to 'reconstructions'
 # TODO: append an alpha to penalize kl contribution
+# TODO: balance kl loss as function of size of data (for xend
 
 class GateLayer(Layer):
     ''' element-wise multiplication gating layer '''
@@ -526,9 +527,9 @@ class XAE():
         x_train = x_train.astype('float32') / 255
         x_test = x_test.astype('float32') / 255
         
-        self.img_train = x_train[0:100]
+        self.img_train = x_train
         self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
-        self.ome_train = self.ome_train[0:100]
+        self.ome_train = self.ome_train
         
         print('original omic train shape', self.ome_train.shape)
         
@@ -654,22 +655,18 @@ class XAE():
             shuffle(img_idx)
             shuffle(ome_idx)
             
-            self.img_train = self.img_train[img_idx,...]
-            self.ome_train = self.ome_train[ome_idx,...]
-            
             # fit autoencoders
-            
 
             print('fitting image autoencoder')
-            I_A_history = self.I_A.fit(x = self.img_train,
-                                       y = self.img_train,
+            I_A_history = self.I_A.fit(x = self.img_train[img_idx,...],
+                                       y = self.img_train[img_idx,...],
                                        epochs = 1,
                                        batch_size = self.batch_size,
                                        verbose = self.verbose)
             
             print('fitting omic autoencoder')
-            O_A_history = self.O_A.fit(x = self.ome_train,
-                                       y = self.ome_train,
+            O_A_history = self.O_A.fit(x = self.ome_train[ome_idx,...],
+                                       y = self.ome_train[ome_idx,...],
                                        epochs = 1,
                                        batch_size = self.batch_size,
                                        verbose = self.verbose)
@@ -677,10 +674,10 @@ class XAE():
             # fit domain translator
             
             print('fitting domain translator')
-            C_C_history = self.C_C.fit(x = [self.img_train, 
-                                            self.ome_train],
-                                       y = [self.img_train, 
-                                            self.ome_train],
+            C_C_history = self.C_C.fit(x = [self.img_train[img_idx,...], 
+                                            self.ome_train[ome_idx,...]],
+                                       y = [self.img_train[img_idx,...], 
+                                            self.ome_train[ome_idx,...]],
                                        epochs = 1,
                                        batch_size = self.batch_size,
                                        verbose = self.verbose)
@@ -794,7 +791,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type = str, default = 'data/test')
     parser.add_argument('--do_save_models', type = int, default = 0)
     parser.add_argument('--do_save_images', type = int, default = 1)
-    parser.add_argument('--do_save_input_data', type = int, default = 0)
+    parser.add_argument('--do_save_input_data', type = int, default = 1)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
     parser.add_argument('--dataset', type = str, default = 'MNIST')
     parser.add_argument('--test_rand_add', type = float, default = 0)
