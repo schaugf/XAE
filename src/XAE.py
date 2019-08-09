@@ -33,7 +33,10 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 # TODO: implement p(z|a) || p(z|b) (encoder divergence)
 # TODO: save channel reconstructions to 'reconstructions'
 # TODO: append an alpha to penalize kl contribution
-# TODO: balance kl loss as function of size of data (for xend
+# TODO: balance kl loss as function of size of data (for xend)
+# TODO: for imaging too
+# TODO: gate layer for images
+
 
 class GateLayer(Layer):
     ''' element-wise multiplication gating layer '''
@@ -128,6 +131,16 @@ class XAE():
             self.LoadCelebAData()
         else:
             self.LoadDataFromDir()
+            
+        if self.test_rand_add != 0:
+            self.AddDomainCorruption()
+        
+        if self.do_save_input_data:
+            self.SaveInputData()
+            
+        print('training image shape', self.img_shape)
+        print('training omic shape', self.ome_shape)
+
         
         # configure optimizer
         
@@ -505,16 +518,61 @@ class XAE():
         ''' load testing celebA dataset '''
 
         print('loading CelebA dataset...')
-       # train_ds = tfds.load('celeba', split=tfds.Split.TRAIN, batch_size=-1)
-       # numpy_ds = tfds.as_numpy(train_ds)
-       # numpy_images, numpy_labels = numpy_ds["image"], numpy_ds["label"]
+        
+        self.omic_activation = 'tanh'
+        
+        self.img_train = np.load('data/celeb/celebA.npy')
+        self.img_train = self.img_train.astype('float32') / 255
+        self.img_shape = self.img_train.shape[1:]
+        
+        self.ome_train = np.load('data/celeb/img_annot.npy')
+        self.ome_shape = self.ome_train.shape[1:]
+        
+        print('training image shape', self.img_shape)
+        print('training omic shape', self.ome_shape)
+        
                                        
  
     def AddDomainCorruption(self):
         ''' append domain-specific corruption '''
         
-        return 0
+        if self.test_rand_add != 0:
+            print('corrupting omics domain')
+            print('original omic train shape', self.ome_train.shape)
+
+            n_samples_to_add = int(self.ome_train.shape[1] * 
+                                   self.test_rand_add /
+                                   (1 - self.test_rand_add))
+            
+            shape_to_add = (self.ome_train.shape[0], n_samples_to_add)
+            sample_space = np.reshape(self.ome_train, -1)
+            
+            random_samples = np.random.choice(sample_space, 
+                                              np.prod(shape_to_add))
+            
+            reshape_samples = np.reshape(random_samples, shape_to_add)
+
+            self.ome_train = np.concatenate((self.ome_train,
+                                            reshape_samples), axis = 1)
+            
+            print('corrupted omic train shape', self.ome_train.shape)
+
+
+    def SaveInputData(self):
+        ''' save the original data'''
     
+        print('saving original data')
+        pd.DataFrame(self.ome_train).to_csv(os.path.join(self.save_dir, 
+                                                        'input_omics.csv'),
+                                            index = False)
+        
+        np.save(os.path.join(self.save_dir, 'input_images.npy'), 
+                self.img_train)
+                
+        pd.DataFrame(self.ome_train).to_csv(os.path.join(self.save_dir, 
+                                                         'labels.csv'),
+                                            index = False)
+
     
     def LoadMNISTData(self):
         ''' load testing MNIST data sets '''
@@ -530,53 +588,10 @@ class XAE():
         self.img_train = x_train
         self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
         self.ome_train = self.ome_train
-        
-        print('original omic train shape', self.ome_train.shape)
-        
-        # TODO: make this its own function
-        
-        if self.test_rand_add != 0:
-            n_samples_to_add = int(self.ome_train.shape[1] * 
-                                   self.test_rand_add /
-                                   (1 - self.test_rand_add))
-            
-            shape_to_add = (self.ome_train.shape[0], n_samples_to_add)
-            sample_space = np.reshape(self.ome_train, -1)
-            
-            print('adding samples', n_samples_to_add)
-            random_samples = np.random.choice(sample_space, 
-                                              np.prod(shape_to_add))
-            
-            reshape_samples = np.reshape(random_samples, shape_to_add)
-
-            self.ome_train = np.concatenate((self.ome_train,
-                                            reshape_samples), axis = 1)
-
-        print('modified omic train shape', self.ome_train.shape)
 
         self.ome_shape = self.ome_train.shape[1:]
         self.img_shape = self.img_train.shape[1:]
-
-        print('training image shape', self.img_shape)
-        print('training omic shape', self.ome_shape)
-        
-        # save both imaging and omics data
-        
-        if self.do_save_input_data:
-            print('saving original data')
-            pd.DataFrame(self.ome_train).to_csv(os.path.join(self.save_dir, 
-                                                            'input_omics.csv'),
-                                                index = False)
             
-            np.save(os.path.join(self.save_dir, 'input_images.npy'), 
-                    self.img_train)
-            
-            # save labels for further analysis
-            
-            pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 'labels.csv'),
-                                         index = False)
-            
-
 
     def InitImageSaver(self):
         ''' create empty array to which to save images '''
@@ -791,7 +806,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type = str, default = 'data/test')
     parser.add_argument('--do_save_models', type = int, default = 0)
     parser.add_argument('--do_save_images', type = int, default = 1)
-    parser.add_argument('--do_save_input_data', type = int, default = 1)
+    parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
     parser.add_argument('--dataset', type = str, default = 'MNIST')
     parser.add_argument('--test_rand_add', type = float, default = 0)
