@@ -17,7 +17,6 @@ from keras import backend as K
 from keras.datasets import mnist
 #from tensorflow_model_optimization.sparsity import keras as sparsity
 
-#import tensorflow_datasets as tfds
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -36,6 +35,8 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 # TODO: balance kl loss as function of size of data (for xend)
 # TODO: for imaging too
 # TODO: gate layer for images
+# TODO: apply trained gate layer to output
+# TODO: loss balance, particularly in cycleLoss
 
 
 class GateLayer(Layer):
@@ -141,7 +142,6 @@ class XAE():
         print('training image shape', self.img_shape)
         print('training omic shape', self.ome_shape)
 
-        
         # configure optimizer
         
         self.optimizer = Adam(self.lr, self.beta_1, self.beta_2)
@@ -510,9 +510,6 @@ class XAE():
         self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
         
-        print('training image shape', self.img_train.shape)
-        print('training omic shape', self.ome_train.shape)
-        
     
     def LoadCelebAData(self):
         ''' load testing celebA dataset '''
@@ -527,11 +524,7 @@ class XAE():
         
         self.ome_train = np.load('data/celeb/img_annot.npy')
         self.ome_shape = self.ome_train.shape[1:]
-        
-        print('training image shape', self.img_shape)
-        print('training omic shape', self.ome_shape)
-        
-                                       
+
  
     def AddDomainCorruption(self):
         ''' append domain-specific corruption '''
@@ -631,13 +624,20 @@ class XAE():
     def SaveReconstructionImage(self):
         ''' save panel of reconstructed images '''
         
+        # TODO: if three channels, save as color
         image_to_save = (self.imgs_to_save * 255).astype(np.uint8)
         
-        for i in range(image_to_save.shape[2]):
-            save_file_name = 'channel_' + str(i) + '_reconstruction.jpg'
-            single_channel = image_to_save[...,i]
-            save_image = Image.fromarray(single_channel)
+        if image_to_save.shape[2] == 3:  # color image
+            save_file_name = 'image_reconstruction.jpg'
+            save_image = Image.fromarray(image_to_save)
             save_image.save(os.path.join(self.save_dir, save_file_name))
+        else:
+            for i in range(image_to_save.shape[2]):
+                save_file_name = 'channel_' + str(i) + '_reconstruction.jpg'
+                single_channel = image_to_save[...,i]
+                save_image = Image.fromarray(single_channel)
+                save_image.save(os.path.join(self.save_dir, save_file_name))
+            
          
 
     def Train(self):
