@@ -15,7 +15,6 @@ from keras.losses import binary_crossentropy, mse
 from keras.utils import plot_model
 from keras import backend as K
 from keras.datasets import mnist
-#from tensorflow_model_optimization.sparsity import keras as sparsity
 
 import numpy as np
 import pandas as pd
@@ -23,17 +22,20 @@ from PIL import Image
 
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
+# TODO: update architecture to match (see tutorial)
+# TODO: training/test split of celeba
+# TODO: implement testing set (save truth vs predicted)
+# TODO: on-the-fly error correction 
 # TODO: implement data augmentation
 # TODO: implement cyclic learning rates
 # TODO: make sure all data as float32
 # TODO: redefine 'image' and 'omic' as A and B
-# TODO: don't worry about flowing from dir, cells saved as npy
+# TODO: add A_name, B_name for easy reference
 # TODO: save models to model_dir
 # TODO: implement p(z|a) || p(z|b) (encoder divergence)
 # TODO: save channel reconstructions to 'reconstructions'
 # TODO: append an alpha to penalize kl contribution
-# TODO: balance kl loss as function of size of data (for xend)
-# TODO: for imaging too
+# TODO: balance kl loss as function of size of data (for xent)
 # TODO: gate layer for images
 # TODO: apply trained gate layer to output
 # TODO: loss balance, particularly in cycleLoss
@@ -230,6 +232,8 @@ class XAE():
                    gate_weights, 
                    delimiter = ',')
 
+
+        # TODO: put this in train, call again in test?
         self.EncodeData()
 
 
@@ -367,7 +371,8 @@ class XAE():
             x = GateLayer(self.ome_shape, 
                           name = 'gate_layer')(self.omic_input)
             
-            x = Activation('tanh')(x)
+            #x = Activation('tanh')(x)
+            x = Activation('sigmoid')(x)
             
             x = Dense(self.inter_dim * 16, 
                       activation = 'relu')(x)
@@ -624,7 +629,6 @@ class XAE():
     def SaveReconstructionImage(self):
         ''' save panel of reconstructed images '''
         
-        # TODO: if three channels, save as color
         image_to_save = (self.imgs_to_save * 255).astype(np.uint8)
         
         if image_to_save.shape[2] == 3:  # color image
@@ -737,6 +741,7 @@ class XAE():
     def EncodeData(self):
         ''' encode XAE model '''
         
+        # TODO: for testing set
         # encode imaging -> latent space
         
         print('encoding images to latent space')
