@@ -129,7 +129,7 @@ class XAE():
         
         # load data
                 
-        if self.dataset == 'MNIST':
+        if (self.dataset == 'MNIST') | (self.dataset == 'test'):
             self.LoadMNISTData()
         elif self.dataset == 'CelebA':
             self.LoadCelebAData()
@@ -551,18 +551,30 @@ class XAE():
                                    self.test_rand_add /
                                    (1 - self.test_rand_add))
             
-            shape_to_add = (self.ome_train.shape[0], n_samples_to_add)
+            train_shape_to_add = (self.ome_train.shape[0], n_samples_to_add)
+            test_shape_to_add = (self.ome_test.shape[0], n_samples_to_add)
+            
             sample_space = np.reshape(self.ome_train, -1)
-            
-            random_samples = np.random.choice(sample_space, 
-                                              np.prod(shape_to_add))
-            
-            reshape_samples = np.reshape(random_samples, shape_to_add)
 
-            self.ome_train = np.concatenate((self.ome_train,
-                                            reshape_samples), axis = 1)
-                        
+            train_samples = np.random.choice(sample_space, 
+                                             np.prod(train_shape_to_add))
+            
+            test_samples = np.random.choice(sample_space, 
+                                             np.prod(test_shape_to_add))
+            
+            train_samples = np.reshape(train_samples, train_shape_to_add)
+            test_samples = np.reshape(test_samples, test_shape_to_add)
+        
+            self.ome_train = np.concatenate((self.ome_train, train_samples), 
+                                            axis = 1)
+            
+            self.ome_test = np.concatenate((self.ome_test, test_samples), 
+                                            axis = 1)
+            
             print('corrupted omic train shape', self.ome_train.shape)
+            print('corrupted omic test shape', self.ome_test.shape)
+            
+            
             
 
 
@@ -598,8 +610,12 @@ class XAE():
         self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
         self.ome_test = self.img_test.reshape(-1, np.prod(x_test.shape[1:]))
 
-        self.img_train = self.img_train[0:200]
-        self.ome_train = self.ome_train[0:200]
+        if self.dataset == 'test':
+            self.img_train = self.img_train[0:200]
+            self.img_test = self.img_test[0:200]
+            self.ome_train = self.ome_train[0:200]
+            self.ome_test = self.ome_test[0:200]
+            
 
             
 
@@ -924,7 +940,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
     parser.add_argument('--gate_activation', type = str, default = 'tanh')
-    parser.add_argument('--dataset', type = str, default = 'MNIST')
+    parser.add_argument('--dataset', type = str, default = 'test')
     parser.add_argument('--test_rand_add', type = float, default = 0.2)
     parser.add_argument('--verbose', type = int, default = 1)    
     parser.add_argument('--omic_activation', type = str, default = 'relu')
