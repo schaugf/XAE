@@ -22,6 +22,7 @@ from PIL import Image
 
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
+# TODO: save reconstructed images as uint
 # TODO: update architecture to match (see tutorial)
 # TODO: training/test split of celeba
 # TODO: implement testing set (save truth vs predicted)
@@ -31,12 +32,10 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 # TODO: make sure all data as float32
 # TODO: redefine 'image' and 'omic' as A and B
 # TODO: add A_name, B_name for easy reference
-# TODO: save models to model_dir
 # TODO: implement p(z|a) || p(z|b) (encoder divergence)
-# TODO: save channel reconstructions to 'reconstructions'
 # TODO: append an alpha to penalize kl contribution
 # TODO: balance kl loss as function of size of data (for xent)
-# TODO: gate layer for images
+# TODO: gate layer for image channels
 # TODO: apply trained gate layer to output
 # TODO: loss balance, particularly in cycleLoss
 
@@ -84,6 +83,7 @@ class XAE():
                  do_save_images = 1,
                  do_save_input_data = 0,
                  do_gate_omics = 0,
+                 gate_activation = 'tanh',
                  n_imgs_to_save = 30,
                  dataset = 'MNIST',
                  test_rand_add = 0,
@@ -115,6 +115,7 @@ class XAE():
         self.do_save_images = do_save_images
         self.do_save_input_data = do_save_input_data
         self.do_gate_omics = do_gate_omics
+        self.gate_activation = gate_activation
         
         self.dataset = dataset
         self.test_rand_add = test_rand_add
@@ -141,6 +142,10 @@ class XAE():
         if self.do_save_input_data:
             self.SaveInputData()
             
+            
+        self.ome_shape = self.ome_train.shape[1:]
+        self.img_shape = self.img_train.shape[1:]
+        
         print('training image shape', self.img_shape)
         print('training omic shape', self.ome_shape)
 
@@ -376,8 +381,7 @@ class XAE():
             x = GateLayer(self.ome_shape, 
                           name = 'gate_layer')(self.omic_input)
             
-            #x = Activation('tanh')(x)
-            x = Activation('sigmoid')(x)
+            x = Activation(self.gate_activation)(x)
             
             x = Dense(self.inter_dim * 16, 
                       activation = 'relu')(x)
@@ -557,8 +561,9 @@ class XAE():
 
             self.ome_train = np.concatenate((self.ome_train,
                                             reshape_samples), axis = 1)
-            
+                        
             print('corrupted omic train shape', self.ome_train.shape)
+            
 
 
     def SaveInputData(self):
@@ -596,8 +601,6 @@ class XAE():
         self.img_train = self.img_train[0:200]
         self.ome_train = self.ome_train[0:200]
 
-        self.ome_shape = self.ome_train.shape[1:]
-        self.img_shape = self.img_train.shape[1:]
             
 
     def InitImageSaver(self):
@@ -920,8 +923,9 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
+    parser.add_argument('--gate_activation', type = str, default = 'tanh')
     parser.add_argument('--dataset', type = str, default = 'MNIST')
-    parser.add_argument('--test_rand_add', type = float, default = 0)
+    parser.add_argument('--test_rand_add', type = float, default = 0.2)
     parser.add_argument('--verbose', type = int, default = 1)    
     parser.add_argument('--omic_activation', type = str, default = 'relu')
     
@@ -946,6 +950,7 @@ if __name__ == '__main__':
                     do_save_images = args.do_save_images,
                     do_save_input_data = args.do_save_input_data,
                     do_gate_omics = args.do_gate_omics,
+                    gate_activation = args.gate_activation,
                     dataset = args.dataset,
                     test_rand_add = args.test_rand_add,
                     verbose = args.verbose,
