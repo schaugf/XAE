@@ -201,21 +201,29 @@ class XAE():
         self.O2I = Model(inputs = self.omic_input,
                          outputs = omic2image)
 
-        # build cycle model
+        # build image-to-omic-to-image cycle model
         
-        self.C_C = Model(inputs = [self.image_input, self.omic_input],
-                         outputs = [rec_image, rec_omic],
-                         name = 'cycle_model')
+        self.I2O2I = Model(inputs = self.image_input,
+                           outputs = rec_image,
+                           name = 'cycle_model_I2O2I')
         
-        self.C_C.summary()
-                    
-        C_C_loss = [self.ImgVAELoss, self.OmeVAELoss]
+        self.I2O2I.summary()
         
-        C_C_weights = [self.lambda_1, self.lambda_2]
         
-        self.C_C.compile(optimizer = self.optimizer,
-                         loss = C_C_loss,
-                         loss_weights = C_C_weights)
+        self.I2O2I.compile(optimizer = self.optimizer,
+                           loss = self.ImgVAELoss)        
+        
+        
+        # build omic-to-image-to-omic
+        
+        self.O2I2O = Model(inputs = self.omic_input,
+                           outputs = rec_omic,
+                           name = 'cycle_model_O2I2O')
+        
+        self.O2I2O.summary()
+        
+        self.O2I2O.compile(optimizer = self.optimizer,
+                           loss = self.OmeVAELoss)
         
         self.SavePlotModels()
         
@@ -232,50 +240,47 @@ class XAE():
                    gate_weights, 
                    delimiter = ',')
 
-
-        # TODO: put this in train, call again in test?
-        self.EncodeData()
-
+        self.SaveEncodedData()
+        self.SaveReconstructedData()
+        self.SaveTranslatedData()
+        
+        
 
     def SavePlotModels(self):
-        ''' save plots of models as pngs '''        
+        ''' save plots of models as pngs '''   
         
-        plot_model(self.I_E,
-                   to_file = os.path.join(self.save_dir, 'image_encoder.png'),
-                   show_shapes = True)
+        model_dir = os.path.join(self.save_dir, 'model_plots')
+        os.makedirs(model_dir, exist_ok = True)
         
-        plot_model(self.I_D,
-                   to_file = os.path.join(self.save_dir, 'image_decoder.png'),
-                   show_shapes = True)
+        plot_model(self.I_E, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'image_encoder.png'))
         
-        plot_model(self.I_A,
-                   to_file = os.path.join(self.save_dir, 'image_AE.png'), 
-                   show_shapes = True)
+        plot_model(self.I_D, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'image_decoder.png'))
+        
+        plot_model(self.I_A, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'image_AE.png'))
                 
-        plot_model(self.O_E,
-                   to_file = os.path.join(self.save_dir, 'omic_encoder.png'),
-                   show_shapes = True)
+        plot_model(self.O_E, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'omic_encoder.png'))
         
-        plot_model(self.O_D,
-                   to_file = os.path.join(self.save_dir, 'omic_decoder.png'),
-                   show_shapes = True)
+        plot_model(self.O_D, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'omic_decoder.png'))
         
-        plot_model(self.O_A,
-                   to_file = os.path.join(self.save_dir, 'omic_AE.png'), 
-                   show_shapes = True)        
+        plot_model(self.O_A, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'omic_AE.png'))        
         
-        plot_model(self.I2O,
-                   to_file = os.path.join(self.save_dir, 'image2omic.png'),
-                   show_shapes = True)
+        plot_model(self.I2O, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'image2omic.png'))
         
-        plot_model(self.O2I,
-                   to_file = os.path.join(self.save_dir, 'omic2image.png'),
-                   show_shapes = True)
+        plot_model(self.O2I, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'omic2image.png'))
         
-        plot_model(self.C_C, 
-                   to_file = os.path.join(self.save_dir, 'cycle_model.png'), 
-                   show_shapes = True)
+        plot_model(self.I2O2I, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'cycle_modeO_I2O2I.png'))
         
+        plot_model(self.O2I2O, show_shapes = True,
+                   to_file = os.path.join(model_dir, 'cycle_modeO_O2I2O.png'))
         
         
     def ImageEncoder(self, name = None):
@@ -584,8 +589,12 @@ class XAE():
         x_test = x_test.astype('float32') / 255
         
         self.img_train = x_train
+        self.img_test = x_test
         self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
-        self.ome_train = self.ome_train
+        self.ome_test = self.img_test.reshape(-1, np.prod(x_test.shape[1:]))
+
+        self.img_train = self.img_train[0:200]
+        self.ome_train = self.ome_train[0:200]
 
         self.ome_shape = self.ome_train.shape[1:]
         self.img_shape = self.img_train.shape[1:]
@@ -654,7 +663,8 @@ class XAE():
         history_columns = ['epoch',
                            'ImageAutoencoderLoss',
                            'OmicAutoencoderLoss',
-                           'CrossChannelLoss']
+                           'I2OLoss',
+                           'O2ILoss']
         
         history_to_save = pd.DataFrame(columns = history_columns)
         
@@ -690,22 +700,28 @@ class XAE():
                                        batch_size = self.batch_size,
                                        verbose = self.verbose)
             
-            # fit domain translator
+            # fit domain translators
             
-            print('fitting domain translator')
-            C_C_history = self.C_C.fit(x = [self.img_train[img_idx,...], 
-                                            self.ome_train[ome_idx,...]],
-                                       y = [self.img_train[img_idx,...], 
-                                            self.ome_train[ome_idx,...]],
-                                       epochs = 1,
-                                       batch_size = self.batch_size,
-                                       verbose = self.verbose)
+            print('fitting domain translator I2O')
+            I2O2I_history = self.I2O2I.fit(x = self.img_train[img_idx,...], 
+                                           y = self.img_train[img_idx,...], 
+                                           epochs = 1,
+                                           batch_size = self.batch_size,
+                                           verbose = self.verbose)
+            
+            O2I2O_history = self.O2I2O.fit(x = self.ome_train[ome_idx,...],
+                                           y = self.ome_train[ome_idx,...],
+                                           epochs = 1,
+                                           batch_size = self.batch_size,
+                                           verbose = self.verbose)            
             # append histories
 
             history_vals = [epoch,
                             I_A_history.history['loss'][0],
                             O_A_history.history['loss'][0],
-                            C_C_history.history['loss'][0]]
+                            I2O2I_history.history['loss'][0],
+                            O2I2O_history.history['loss'][0]
+                            ]
             
             history_to_save = history_to_save.append(dict(zip(history_columns, 
                                                               history_vals)),
@@ -728,66 +744,157 @@ class XAE():
         ''' save XAE model '''
         
         print('saving models to file system')
-        self.C_C.save_weights(os.path.join(self.save_dir, 
-                                           'epoch_' + str(epoch) + '_XAE.h5'))
         
-        self.I_A.save_weights(os.path.join(self.save_dir, 
+        model_dir = os.path.join(self.save_dir, 'model_plots')
+        os.makedirs(model_dir, exist_ok = True)
+        
+        self.I2O2I.save_weights(os.path.join(model_dir, 
+                                             'epoch_' + str(epoch) + 
+                                             '_I2O2I.h5'))
+        
+        self.O2I2O.save_weights(os.path.join(model_dir, 
+                                             'epoch_' + str(epoch) + 
+                                             '_O2I2O.h5'))
+        
+        self.I_A.save_weights(os.path.join(model_dir, 
                                            'epoch_' + str(epoch) + '_I_A.h5'))
         
-        self.O_A.save_weights(os.path.join(self.save_dir, 
+        self.O_A.save_weights(os.path.join(model_dir, 
                                            'epoch_' + str(epoch) + '_O_A.h5'))
          
 
-    def EncodeData(self):
+    def SaveEncodedData(self):
         ''' encode XAE model '''
+                
+        encoded_dir = os.path.join(self.save_dir, 'encodings')
+        os.makedirs(encoded_dir, exist_ok = True)
         
-        # TODO: for testing set
         # encode imaging -> latent space
         
         print('encoding images to latent space')
-        encoded_images = self.I_E.predict(self.img_train)
-        encoded_images = pd.DataFrame(encoded_images)
-        encoded_images.to_csv(os.path.join(self.save_dir, 'encodedImages.csv'),
-                              index = False)
+        encoded_images_train = self.I_E.predict(self.img_train)
+        encoded_images_train = pd.DataFrame(encoded_images_train)
+        encoded_images_train.to_csv(os.path.join(encoded_dir, 
+                                           'encodedImages_train.csv'),
+                                    index = False)
         
+        encoded_images_test = self.I_E.predict(self.img_test)
+        encoded_images_test = pd.DataFrame(encoded_images_test)
+        encoded_images_test.to_csv(os.path.join(encoded_dir, 
+                                           'encodedImages_test.csv'),
+                                   index = False)
+            
         # encode omics -> latent space
         
         print('encoding omics to latent space')
-        encoded_omics = self.O_E.predict(self.ome_train)
-        encoded_omics = pd.DataFrame(encoded_omics)
-        encoded_omics.to_csv(os.path.join(self.save_dir, 'encodedOmics.csv'),
-                             index = False)
+        encoded_omics_train = self.O_E.predict(self.ome_train)
+        encoded_omics_train = pd.DataFrame(encoded_omics_train)
+        encoded_omics_train.to_csv(os.path.join(encoded_dir, 
+                                          'encodedOmics_train.csv'),
+                                   index = False)
+            
+        encoded_omics_test = self.O_E.predict(self.ome_test)
+        encoded_omics_test = pd.DataFrame(encoded_omics_test)
+        encoded_omics_test.to_csv(os.path.join(encoded_dir, 
+                                          'encodedOmics_test.csv'),
+                                  index = False)
         
-        # encode image -> omic
+        
+    def SaveReconstructedData(self):
+        ''' save autoencoder and cycled reconstructions '''
+                    
+        reconstructed_dir = os.path.join(self.save_dir, 'reconstructions')
+        os.makedirs(reconstructed_dir, exist_ok = True)
+        
+        # autoencoder reconstructions
+        
+        print('generating image reconstructions')
+        recon_images_train = self.I_A.predict(self.img_train)
+        np.save(os.path.join(reconstructed_dir, 'recon_images_train.npy'), 
+                             recon_images_train)
+        
+        recon_images_test = self.I_A.predict(self.img_test)
+        np.save(os.path.join(reconstructed_dir, 'recon_images_test.npy'), 
+                             recon_images_test)
+        
+        print('generating omic reconstructions')
+        recon_omics_train = self.O_A.predict(self.ome_train)
+        recon_omics_train = pd.DataFrame(recon_omics_train)
+        recon_omics_train.to_csv(os.path.join(reconstructed_dir, 
+                                              'recon_omics_train.csv'),
+                                 index = False)
+        
+        recon_omics_test = self.O_A.predict(self.ome_test)
+        recon_omics_test = pd.DataFrame(recon_omics_test)
+        recon_omics_test.to_csv(os.path.join(reconstructed_dir, 
+                                              'recon_omics_test.csv'),
+                                 index = False)
+
+
+        # save cycled reconstructions
+        
+        print('generating image cycled reconstructions')
+        cycle_images_train = self.I2O2I.predict(self.img_train)
+        np.save(os.path.join(reconstructed_dir, 'cycled_images_train.npy'), 
+                             cycle_images_train)
+        
+        cycle_images_test = self.I2O2I.predict(self.img_test)
+        np.save(os.path.join(reconstructed_dir, 'cycled_images_test.npy'), 
+                             cycle_images_test)
+        
+        print('generating omic cycled reconstructions')
+        cycle_omics_train = self.O2I2O.predict(self.ome_train)
+        cycle_omics_train = pd.DataFrame(cycle_omics_train)
+        cycle_omics_train.to_csv(os.path.join(reconstructed_dir, 
+                                              'cycle_omics_train.csv'),
+                                 index = False)
+        
+        cycle_omics_test = self.O2I2O.predict(self.ome_test)
+        cycle_omics_test = pd.DataFrame(cycle_omics_test)
+        cycle_omics_test.to_csv(os.path.join(reconstructed_dir, 
+                                              'cycle_omics_test.csv'),
+                                 index = False)
+        
+    
+    def SaveTranslatedData(self):
+        ''' translate imaging and omics into corresponding target domains '''
+        
+        translated_dir = os.path.join(self.save_dir, 'translations')
+        os.makedirs(translated_dir, exist_ok = True)
+        # domain translation image -> omic
         
         print('translating images to omics domain')
-        images2omics = self.I2O.predict(self.img_train)
-        images2omics = pd.DataFrame(images2omics)
-        images2omics.to_csv(os.path.join(self.save_dir, 'images2omics.csv'),
+        images2omics_train = self.I2O.predict(self.img_train)
+        images2omics_train = pd.DataFrame(images2omics_train)
+        images2omics_train.to_csv(os.path.join(translated_dir, 
+                                         'images2omics_train.csv'),
                              index = False)
+            
+        images2omics_test = self.I2O.predict(self.img_test)
+        images2omics_test = pd.DataFrame(images2omics_test)
+        images2omics_test.to_csv(os.path.join(translated_dir, 
+                                              'images2omics_test.csv'),
+                             index = False)            
         
         # encode omic -> image
         
         print('translating omics to imaging domain')
-        omics2images = self.O2I.predict(self.ome_train)
-        np.save(os.path.join(self.save_dir, 'omics2images.npy'), omics2images)
+        omics2images_train = self.O2I.predict(self.ome_train)
+        np.save(os.path.join(translated_dir, 'omics2images_train.npy'), 
+                omics2images_train)
         
-        # reconstructions
+        omics2images_test = self.O2I.predict(self.ome_test)
+        np.save(os.path.join(translated_dir, 'omics2images_test.npy'), 
+                omics2images_test)
         
-        print('generating reconstructions')
-        recon_images = self.I_A.predict(self.img_train)
-        np.save(os.path.join(self.save_dir, 'recon_images.npy'), recon_images)
-        
-        recon_omics = self.O_A.predict(self.ome_train)
-        recon_omics = pd.DataFrame(recon_omics)
-        recon_omics.to_csv(os.path.join(self.save_dir, 'recon_omics.csv'),
-                           index = False)
         
     
     def WalkFeatureSpace(self):
         ''' walk feature space between domains '''
         # TODO: this whole thing
+        # for each latent variable:
         print('walking feature space...')
+        
         
         
 
