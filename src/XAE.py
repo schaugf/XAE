@@ -22,6 +22,8 @@ from PIL import Image
 
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
+# TODO: MNIST, evaluate zeroing noise
+
 # TODO: save reconstructed images as uint
 # TODO: update architecture to match (see tutorial)
 # TODO: training/test split of celeba
