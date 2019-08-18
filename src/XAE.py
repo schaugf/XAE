@@ -13,8 +13,9 @@ from keras.layers import Conv2D, Conv2DTranspose, Activation, Layer
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy, mse
 from keras.utils import plot_model
-from keras import backend as K
 from keras.datasets import mnist
+from keras import regularizers
+from keras import backend as K
 
 import numpy as np
 import pandas as pd
@@ -23,7 +24,6 @@ from PIL import Image
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
 # TODO: MNIST, evaluate zeroing noise
-
 # TODO: save reconstructed images as uint
 # TODO: update architecture to match (see tutorial)
 # TODO: training/test split of celeba
@@ -45,17 +45,22 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 class GateLayer(Layer):
     ''' element-wise multiplication gating layer '''
     
-    def __init__(self, output_dim, **kwargs):
+    def __init__(self, 
+                 output_dim, 
+                 kernel_regularizer = None,
+                 **kwargs):
+        
         self.output_dim = output_dim
+        self.kernel_regularizer = regularizers.get(kernel_regularizer)
+        
         super(GateLayer, self).__init__(**kwargs)
 
     def build(self, input_shape):
-
-        print('gate input shape:', input_shape)
         self.kernel = self.add_weight(name = 'kernel', 
                                       shape = (1, input_shape[1]),
                                       initializer = 'uniform',
-                                      trainable = True)
+                                      trainable = True,
+                                      regularizer=self.kernel_regularizer)
         
         super(GateLayer, self).build(input_shape)  
         
@@ -381,7 +386,8 @@ class XAE():
             print('gating omics input with input shape', self.ome_shape[0])
             
             x = GateLayer(self.ome_shape, 
-                          name = 'gate_layer')(self.omic_input)
+                          name = 'gate_layer',
+                          kernel_regularizer = regularizers.l2(0.01))(self.omic_input)
             
             x = Activation(self.gate_activation)(x)
             
@@ -534,11 +540,16 @@ class XAE():
         
         self.omic_activation = 'tanh'
         
+        # load raw data
         self.img_train = np.load('data/celeb/celebA.npy')
         self.img_train = self.img_train.astype('float32') / 255
-        self.img_shape = self.img_train.shape[1:]
         
         self.ome_train = np.load('data/celeb/img_annot.npy')
+        
+        # split into training/test
+        
+        # set shape params
+        self.img_shape = self.img_train.shape[1:]
         self.ome_shape = self.ome_train.shape[1:]
 
  
@@ -577,8 +588,6 @@ class XAE():
             print('corrupted omic test shape', self.ome_test.shape)
             
             
-            
-
 
     def SaveInputData(self):
         ''' save the original data'''
@@ -590,11 +599,8 @@ class XAE():
         
         np.save(os.path.join(self.save_dir, 'input_images.npy'), 
                 self.img_train)
-                
-        pd.DataFrame(self.ome_train).to_csv(os.path.join(self.save_dir, 
-                                                         'labels.csv'),
-                                            index = False)
 
+        
     
     def LoadMNISTData(self):
         ''' load testing MNIST data sets '''
@@ -617,9 +623,16 @@ class XAE():
             self.img_test = self.img_test[0:200]
             self.ome_train = self.ome_train[0:200]
             self.ome_test = self.ome_test[0:200]
+        
+        # save labels
+        pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 
+                                                  'labels_train.csv'),
+                                     index = False)
             
+        pd.DataFrame(y_test).to_csv(os.path.join(self.save_dir,
+                                                 'labels_test.csv'),
+                                    index = False)
 
-            
 
     def InitImageSaver(self):
         ''' create empty array to which to save images '''
@@ -684,8 +697,8 @@ class XAE():
         history_columns = ['epoch',
                            'ImageAutoencoderLoss',
                            'OmicAutoencoderLoss',
-                           'I2OLoss',
-                           'O2ILoss']
+                           'I2O2ILoss',
+                           'O2I2OLoss']
         
         history_to_save = pd.DataFrame(columns = history_columns)
         
@@ -942,7 +955,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
     parser.add_argument('--gate_activation', type = str, default = 'tanh')
-    parser.add_argument('--dataset', type = str, default = 'test')
+    parser.add_argument('--dataset', type = str, default = 'MNIST')
     parser.add_argument('--test_rand_add', type = float, default = 0.2)
     parser.add_argument('--verbose', type = int, default = 1)    
     parser.add_argument('--omic_activation', type = str, default = 'relu')
