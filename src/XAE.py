@@ -25,16 +25,14 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 
 # TODO: MNIST, evaluate zeroing noise
 # TODO: save reconstructed images as uint
-# TODO: update architecture to match (see tutorial)
 # TODO: training/test split of celeba
-# TODO: implement testing set (save truth vs predicted)
 # TODO: on-the-fly error correction 
 # TODO: implement data augmentation
 # TODO: implement cyclic learning rates
 # TODO: make sure all data as float32
 # TODO: redefine 'image' and 'omic' as A and B
 # TODO: add A_name, B_name for easy reference
-# TODO: implement p(z|a) || p(z|b) (encoder divergence)
+# TODO: implement minimize encoding separation (L2 of Phi functions)
 # TODO: append an alpha to penalize kl contribution
 # TODO: balance kl loss as function of size of data (for xent)
 # TODO: gate layer for image channels
@@ -223,8 +221,7 @@ class XAE():
         
         
         self.I2O2I.compile(optimizer = self.optimizer,
-                           loss = self.ImgVAELoss)        
-        
+                           loss = self.ImgCycleLoss)        
         
         # build omic-to-image-to-omic
         
@@ -235,7 +232,7 @@ class XAE():
         self.O2I2O.summary()
         
         self.O2I2O.compile(optimizer = self.optimizer,
-                           loss = self.OmeVAELoss)
+                           loss = self.OmeCycleLoss)
         
         self.SavePlotModels()
         
@@ -461,6 +458,52 @@ class XAE():
                      name = name)
     
           
+    def ImgCycleLoss(self, y_true, y_pred):
+        ''' loss for cyclic transformation '''
+        
+        rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
+        rec_loss *= np.prod(self.img_shape)
+        
+        kl_loss = (1 + self.img_z_log_var - 
+                   K.square(self.img_z_mean) - K.exp(self.img_z_log_var))
+                   
+        kl_loss = K.sum(kl_loss, axis = -1)
+        kl_loss *= -0.5   
+        
+        img_encoding = self.latent_layer([self.img_z_mean, 
+                                          self.img_z_log_var])  
+      
+        ome_encoding = self.latent_layer([self.ome_z_mean, 
+                                          self.ome_z_log_var])
+        
+        mutual_encoding_loss = mse(img_encoding, ome_encoding)
+        
+        return K.mean(rec_loss + kl_loss + mutual_encoding_loss)
+    
+    
+    def OmeCycleLoss(self, y_true, y_pred):
+        ''' loss for cyclic transformation '''
+        
+        rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
+        rec_loss *= np.prod(self.img_shape)
+        
+        kl_loss = (1 + self.ome_z_log_var - 
+                   K.square(self.ome_z_mean) - K.exp(self.ome_z_log_var))
+                   
+        kl_loss = K.sum(kl_loss, axis = -1)
+        kl_loss *= -0.5     
+        
+        img_encoding = self.latent_layer([self.img_z_mean, 
+                                          self.img_z_log_var])  
+      
+        ome_encoding = self.latent_layer([self.ome_z_mean, 
+                                          self.ome_z_log_var])
+        
+        mutual_encoding_loss = mse(img_encoding, ome_encoding)
+        
+        return K.mean(rec_loss + mutual_encoding_loss)
+    
+    
     def ImgVAELoss(self, y_true, y_pred):
         ''' compute vae loss for image vae'''
         
@@ -951,13 +994,11 @@ class XAE():
                 omics2images_test)
         
         
-    
     def WalkFeatureSpace(self):
         ''' walk feature space between domains '''
         # TODO: this whole thing
         # for each latent variable:
         print('walking feature space...')
-        
         
         
 
