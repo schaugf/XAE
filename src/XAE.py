@@ -698,7 +698,11 @@ class XAE():
                            'ImageAutoencoderLoss',
                            'OmicAutoencoderLoss',
                            'I2O2ILoss',
-                           'O2I2OLoss']
+                           'O2I2OLoss',
+                           'ImageAutoencoderLossEval',
+                           'OmicAutoencoderLossEval',
+                           'I2O2ILossEval',
+                           'O2I2OLossEval']
         
         history_to_save = pd.DataFrame(columns = history_columns)
         
@@ -726,6 +730,7 @@ class XAE():
                                        epochs = 1,
                                        batch_size = self.batch_size,
                                        verbose = self.verbose)
+
             
             print('fitting omic autoencoder')
             O_A_history = self.O_A.fit(x = self.ome_train[ome_idx,...],
@@ -736,26 +741,49 @@ class XAE():
             
             # fit domain translators
             
-            print('fitting domain translator I2O')
+            print('fitting domain translator I2O2I')
             I2O2I_history = self.I2O2I.fit(x = self.img_train[img_idx,...], 
                                            y = self.img_train[img_idx,...], 
                                            epochs = 1,
                                            batch_size = self.batch_size,
                                            verbose = self.verbose)
             
+            print('fitting domain translator O2I2O')
             O2I2O_history = self.O2I2O.fit(x = self.ome_train[ome_idx,...],
                                            y = self.ome_train[ome_idx,...],
                                            epochs = 1,
                                            batch_size = self.batch_size,
                                            verbose = self.verbose)            
+            
+            # evaluate models on testing data
+            
+            print('evaluating trained models on test set')
+            I_A_eval = self.I_A.evaluate(x = self.img_test,
+                                         y = self.img_test)
+            
+            O_A_eval = self.O_A.evaluate(x = self.ome_test,
+                                         y = self.ome_test)
+            
+            I2O2I_eval = self.I2O2I.evaluate(x = self.img_test,
+                                             y = self.img_test)
+                        
+            O2I2O_eval = self.O2I2O.evaluate(x = self.ome_test,
+                                             y = self.ome_test)
+            
             # append histories
 
             history_vals = [epoch,
                             I_A_history.history['loss'][0],
                             O_A_history.history['loss'][0],
                             I2O2I_history.history['loss'][0],
-                            O2I2O_history.history['loss'][0]
+                            O2I2O_history.history['loss'][0],
+                            I_A_eval,
+                            O_A_eval,
+                            I2O2I_eval,
+                            O2I2O_eval
                             ]
+            
+            print(history_vals)
             
             history_to_save = history_to_save.append(dict(zip(history_columns, 
                                                               history_vals)),
@@ -895,6 +923,7 @@ class XAE():
         
         translated_dir = os.path.join(self.save_dir, 'translations')
         os.makedirs(translated_dir, exist_ok = True)
+        
         # domain translation image -> omic
         
         print('translating images to omics domain')
@@ -954,8 +983,8 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
-    parser.add_argument('--gate_activation', type = str, default = 'tanh')
-    parser.add_argument('--dataset', type = str, default = 'MNIST')
+    parser.add_argument('--gate_activation', type = str, default = 'sigmoid')
+    parser.add_argument('--dataset', type = str, default = 'test')
     parser.add_argument('--test_rand_add', type = float, default = 0.2)
     parser.add_argument('--verbose', type = int, default = 1)    
     parser.add_argument('--omic_activation', type = str, default = 'relu')
