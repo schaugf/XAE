@@ -24,6 +24,7 @@ from PIL import Image
 
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
+
 # TODO: MNIST, evaluate zeroing noise
 # TODO: save reconstructed images as uint
 # TODO: training/test split of celeba
@@ -33,12 +34,11 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 # TODO: make sure all data as float32
 # TODO: redefine 'image' and 'omic' as A and B
 # TODO: add A_name, B_name for easy reference
-# TODO: implement minimize encoding separation (L2 of Phi functions)
 # TODO: append an alpha to penalize kl contribution
 # TODO: balance kl loss as function of size of data (for xent)
 # TODO: gate layer for image channels
-# TODO: apply trained gate layer to output
 # TODO: loss balance, particularly in cycleLoss
+# TODO: feature space walking for domain correlations
 
 
 class GateLayer(Layer):
@@ -480,15 +480,13 @@ class XAE():
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.img_shape)
         
-        kl_loss = (1 + self.img_z_log_var - 
-                   K.square(self.img_z_mean) - K.exp(self.img_z_log_var))
-                   
-        kl_loss = K.sum(kl_loss, axis = -1)
-        kl_loss *= -0.5   
-        
         mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
         
-        return K.mean(rec_loss + kl_loss + mutual_encoding_loss)
+        #rec_loss = K.print_tensor(rec_loss, message='rec loss = ')
+        #mutual_encoding_loss = K.print_tensor(mutual_encoding_loss, 
+        #                                      message='me loss = ')
+        
+        return K.mean(rec_loss + mutual_encoding_loss)
     
     
     def OmeCycleLoss(self, y_true, y_pred):
@@ -497,15 +495,9 @@ class XAE():
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.ome_shape)
         
-        kl_loss = (1 + self.ome_z_log_var - 
-                   K.square(self.ome_z_mean) - K.exp(self.ome_z_log_var))
-                   
-        kl_loss = K.sum(kl_loss, axis = -1)
-        kl_loss *= -0.5     
-        
         mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
         
-        return K.mean(rec_loss + kl_loss + mutual_encoding_loss)
+        return K.mean(rec_loss + mutual_encoding_loss)
     
     
     def ImgVAELoss(self, y_true, y_pred):
@@ -694,7 +686,6 @@ class XAE():
     def AddReconstructionsToSaver(self):
         ''' add a column of images to a stack '''
         
-        # TODO: this for omics domain
         print('generating predictions for saving')
         i_a_recon = self.I_A.predict(self.imgs_to_save_stack)
         flat_i_a_recon = np.concatenate(i_a_recon)
@@ -993,14 +984,6 @@ class XAE():
         omics2images_test = self.O2I.predict(self.ome_test)
         np.save(os.path.join(translated_dir, 'omics2images_test.npy'), 
                 omics2images_test)
-        
-        
-    def WalkFeatureSpace(self):
-        ''' walk feature space between domains '''
-        # TODO: this whole thing
-        # for each latent variable:
-        print('walking feature space...')
-        
         
 
 if __name__ == '__main__':
