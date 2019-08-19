@@ -572,6 +572,38 @@ class XAE():
         self.ome_shape = self.ome_train.shape[1:]
         
     
+    def LoadMNISTData(self):
+        ''' load testing MNIST data sets '''
+        
+        print('loading MNIST data')
+        (x_train, y_train), (x_test, y_test) = mnist.load_data()
+        image_size = x_train.shape[1]
+        x_train = np.reshape(x_train, [-1, image_size, image_size, 1])
+        x_test = np.reshape(x_test, [-1, image_size, image_size, 1])
+        x_train = x_train.astype('float32') / 255
+        x_test = x_test.astype('float32') / 255
+        
+        self.img_train = x_train
+        self.img_test = x_test
+        self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
+        self.ome_test = self.img_test.reshape(-1, np.prod(x_test.shape[1:]))
+
+        if self.dataset == 'test':
+            self.img_train = self.img_train[0:200]
+            self.img_test = self.img_test[0:200]
+            self.ome_train = self.ome_train[0:200]
+            self.ome_test = self.ome_test[0:200]
+        
+        # save labels
+        pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 
+                                                  'labels_train.csv'),
+                                     index = False)
+            
+        pd.DataFrame(y_test).to_csv(os.path.join(self.save_dir,
+                                                 'labels_test.csv'),
+                                    index = False)
+
+
     def LoadCelebAData(self):
         ''' load testing celebA dataset '''
 
@@ -580,12 +612,14 @@ class XAE():
         self.omic_activation = 'tanh'
         
         # load raw data
-        self.img_train = np.load('data/celeb/celebA.npy')
+        self.img_train = np.load('data/celeb/celebA_train.npy')
+        self.img_test = np.load('data/celeb/celebA_test.npy')
+        
         self.img_train = self.img_train.astype('float32') / 255
+        self.img_test = self.img_test.astype('float32') / 255
         
-        self.ome_train = np.load('data/celeb/img_annot.npy')
-        
-        # split into training/test
+        self.ome_train = np.load('data/celeb/celebA_annot_train.npy')
+        self.ome_test = np.load('data/celeb/celebA_annot_test.npy')
         
         # set shape params
         self.img_shape = self.img_train.shape[1:]
@@ -638,40 +672,7 @@ class XAE():
         
         np.save(os.path.join(self.save_dir, 'input_images.npy'), 
                 self.img_train)
-
         
-    
-    def LoadMNISTData(self):
-        ''' load testing MNIST data sets '''
-        
-        print('loading MNIST data')
-        (x_train, y_train), (x_test, y_test) = mnist.load_data()
-        image_size = x_train.shape[1]
-        x_train = np.reshape(x_train, [-1, image_size, image_size, 1])
-        x_test = np.reshape(x_test, [-1, image_size, image_size, 1])
-        x_train = x_train.astype('float32') / 255
-        x_test = x_test.astype('float32') / 255
-        
-        self.img_train = x_train
-        self.img_test = x_test
-        self.ome_train = self.img_train.reshape(-1, np.prod(x_train.shape[1:]))
-        self.ome_test = self.img_test.reshape(-1, np.prod(x_test.shape[1:]))
-
-        if self.dataset == 'test':
-            self.img_train = self.img_train[0:200]
-            self.img_test = self.img_test[0:200]
-            self.ome_train = self.ome_train[0:200]
-            self.ome_test = self.ome_test[0:200]
-        
-        # save labels
-        pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 
-                                                  'labels_train.csv'),
-                                     index = False)
-            
-        pd.DataFrame(y_test).to_csv(os.path.join(self.save_dir,
-                                                 'labels_test.csv'),
-                                    index = False)
-
 
     def InitImageSaver(self):
         ''' create empty array to which to save images '''
