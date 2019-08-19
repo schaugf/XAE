@@ -15,6 +15,7 @@ from keras.losses import binary_crossentropy, mse
 from keras.utils import plot_model
 from keras.datasets import mnist
 from keras import regularizers
+from keras import activations
 from keras import backend as K
 
 import numpy as np
@@ -46,10 +47,12 @@ class GateLayer(Layer):
     def __init__(self, 
                  output_dim, 
                  kernel_regularizer = None,
+                 activation = None,
                  **kwargs):
         
         self.output_dim = output_dim
         self.kernel_regularizer = regularizers.get(kernel_regularizer)
+        self.activation = activations.get(activation)
         
         super(GateLayer, self).__init__(**kwargs)
 
@@ -63,7 +66,10 @@ class GateLayer(Layer):
         super(GateLayer, self).build(input_shape)  
         
     def call(self, x):
-        return x * self.kernel    
+        output = x * self.kernel    
+        if self.activation is not None:
+            output = self.activation(output)
+        return output
     
 
 class XAE():
@@ -168,7 +174,16 @@ class XAE():
         self.latent_layer = Lambda(self.Sampling, 
                                    output_shape = (latent_dim,), 
                                    name = 'latent_layer')
-
+        
+        # build gate layer
+        
+        if self.do_gate_omics:
+            gate_r = regularizers.l2(0.01)
+            self.gate_layer = GateLayer(self.ome_shape, 
+                                        activation = self.gate_activation,
+                                        kernel_regularizer = gate_r,
+                                        name = 'gate_layer')
+        
         # build image autoencoder
         
         self.I_E = self.ImageEncoder(name = 'image_encoder')
@@ -221,7 +236,7 @@ class XAE():
         
         
         self.I2O2I.compile(optimizer = self.optimizer,
-                           loss = self.ImgCycleLoss)        
+                           loss = self.ImgVAELoss)        
         
         # build omic-to-image-to-omic
         
@@ -232,7 +247,7 @@ class XAE():
         self.O2I2O.summary()
         
         self.O2I2O.compile(optimizer = self.optimizer,
-                           loss = self.OmeCycleLoss)
+                           loss = self.OmeVAELoss)
         
         self.SavePlotModels()
         
@@ -381,13 +396,7 @@ class XAE():
         
         if self.do_gate_omics:
             print('gating omics input with input shape', self.ome_shape[0])
-            
-            x = GateLayer(self.ome_shape, 
-                          name = 'gate_layer',
-                          kernel_regularizer = regularizers.l2(0.01))(self.omic_input)
-            
-            x = Activation(self.gate_activation)(x)
-            
+            x = self.gate_layer(self.omic_input)
             x = Dense(self.inter_dim * 16, 
                       activation = 'relu')(x)
         else:
@@ -434,8 +443,14 @@ class XAE():
         x = Dense(self.inter_dim * 16, 
                   activation = 'relu')(x) 
         
-        omic_output = Dense(self.ome_shape[0], 
-                            activation = self.omic_activation)(x)
+        if self.do_gate_omics:
+            x = Dense(self.ome_shape[0], 
+                      activation = 'relu')(x)
+            omic_output = self.gate_layer(x)
+            
+        else:
+            omic_output = Dense(self.ome_shape[0], 
+                                activation = self.omic_activation)(x)
         
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
@@ -485,7 +500,7 @@ class XAE():
         ''' loss for cyclic transformation '''
         
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
-        rec_loss *= np.prod(self.img_shape)
+        rec_loss *= np.prod(self.ome_shape)
         
         kl_loss = (1 + self.ome_z_log_var - 
                    K.square(self.ome_z_mean) - K.exp(self.ome_z_log_var))
@@ -501,7 +516,7 @@ class XAE():
         
         mutual_encoding_loss = mse(img_encoding, ome_encoding)
         
-        return K.mean(rec_loss + mutual_encoding_loss)
+        return K.mean(rec_loss + kl_loss + mutual_encoding_loss)
     
     
     def ImgVAELoss(self, y_true, y_pred):
@@ -823,11 +838,8 @@ class XAE():
                             I_A_eval,
                             O_A_eval,
                             I2O2I_eval,
-                            O2I2O_eval
-                            ]
-            
-            print(history_vals)
-            
+                            O2I2O_eval]
+                        
             history_to_save = history_to_save.append(dict(zip(history_columns, 
                                                               history_vals)),
                                                      ignore_index = True)
