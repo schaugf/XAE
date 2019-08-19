@@ -9,7 +9,7 @@ from random import shuffle
 
 from keras.models import Model
 from keras.layers import Input, Dense, Lambda, Reshape, Flatten
-from keras.layers import Conv2D, Conv2DTranspose, Activation, Layer
+from keras.layers import Conv2D, Conv2DTranspose, Layer
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy, mse
 from keras.utils import plot_model
@@ -255,14 +255,11 @@ class XAE():
 
         self.Train()
         
-        print('saving gating layer')
-        
-        gate_weights = self.O_E.layers[1].get_weights()[0][0]
-        
-        np.savetxt(os.path.join(self.save_dir, 
-                                'gate_weights.csv'), 
-                   gate_weights, 
-                   delimiter = ',')
+        if self.do_gate_omics:
+            gate_weights = self.O_E.layers[1].get_weights()[0][0]
+            np.savetxt(os.path.join(self.save_dir, 'gate_weights.csv'), 
+                       gate_weights, 
+                       delimiter = ',')
 
         self.SaveEncodedData()
         self.SaveReconstructedData()
@@ -339,10 +336,12 @@ class XAE():
         
         self.img_z_mean = Dense(self.latent_dim, name = 'img_z_mean')(x)
         self.img_z_log_var = Dense(self.latent_dim, name = 'img_z_log_var')(x)
+        
+        self.img_latent = self.latent_layer([self.img_z_mean, 
+                                             self.img_z_log_var])
          
         return Model(inputs = self.image_input, 
-                     outputs = self.latent_layer([self.img_z_mean,
-                                                  self.img_z_log_var]),
+                     outputs = self.img_latent,
                      name = name)
     
     
@@ -419,10 +418,12 @@ class XAE():
         
         self.ome_z_mean = Dense(self.latent_dim, name = 'ome_z_mean')(x)        
         self.ome_z_log_var = Dense(self.latent_dim, name = 'ome_z_log_var')(x)
-                
+        
+        self.ome_latent = self.latent_layer([self.ome_z_mean,
+        
+                                             self.ome_z_log_var])
         return Model(inputs = self.omic_input, 
-                     outputs = self.latent_layer([self.ome_z_mean,
-                                                  self.ome_z_log_var]),
+                     outputs = self.ome_latent,
                      name = name)
     
     
@@ -485,13 +486,7 @@ class XAE():
         kl_loss = K.sum(kl_loss, axis = -1)
         kl_loss *= -0.5   
         
-        img_encoding = self.latent_layer([self.img_z_mean, 
-                                          self.img_z_log_var])  
-      
-        ome_encoding = self.latent_layer([self.ome_z_mean, 
-                                          self.ome_z_log_var])
-        
-        mutual_encoding_loss = mse(img_encoding, ome_encoding)
+        mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
         
         return K.mean(rec_loss + kl_loss + mutual_encoding_loss)
     
@@ -508,13 +503,7 @@ class XAE():
         kl_loss = K.sum(kl_loss, axis = -1)
         kl_loss *= -0.5     
         
-        img_encoding = self.latent_layer([self.img_z_mean, 
-                                          self.img_z_log_var])  
-      
-        ome_encoding = self.latent_layer([self.ome_z_mean, 
-                                          self.ome_z_log_var])
-        
-        mutual_encoding_loss = mse(img_encoding, ome_encoding)
+        mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
         
         return K.mean(rec_loss + kl_loss + mutual_encoding_loss)
     
