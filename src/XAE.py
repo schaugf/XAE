@@ -492,6 +492,7 @@ class XAE():
         rec_loss *= np.prod(self.ome_shape)
 
         mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
+        mutual_encoding_loss *= self.latent_dim
         
         return K.mean(rec_loss + mutual_encoding_loss)
     
@@ -504,7 +505,8 @@ class XAE():
         rec_loss *= np.prod(self.img_shape)
 
         mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
-        
+        mutual_encoding_loss *= self.latent_dim
+
         return K.mean(rec_loss + mutual_encoding_loss)
     
     
