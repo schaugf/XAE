@@ -39,6 +39,7 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'
 # TODO: gate layer for image channels
 # TODO: loss balance, particularly in cycleLoss
 # TODO: feature space walking for domain correlations
+# TODO: learning rate decay
 
 
 class GateLayer(Layer):
@@ -94,7 +95,9 @@ class XAE():
                  do_save_images = 1,
                  do_save_input_data = 0,
                  do_gate_omics = 0,
+                 do_gate_backend = 0,
                  gate_activation = 'tanh',
+                 gate_l2 = 0,
                  n_imgs_to_save = 30,
                  dataset = 'MNIST',
                  test_rand_add = 0,
@@ -126,7 +129,9 @@ class XAE():
         self.do_save_images = do_save_images
         self.do_save_input_data = do_save_input_data
         self.do_gate_omics = do_gate_omics
+        self.do_gate_backend = do_gate_backend
         self.gate_activation = gate_activation
+        self.gate_l2 = gate_l2
         
         self.dataset = dataset
         self.test_rand_add = test_rand_add
@@ -178,11 +183,16 @@ class XAE():
         # build gate layer
         
         if self.do_gate_omics:
-            gate_r = regularizers.l2(0.01)
-            self.gate_layer = GateLayer(self.ome_shape, 
-                                        activation = self.gate_activation,
-                                        kernel_regularizer = gate_r,
-                                        name = 'gate_layer')
+            if self.gate_l2:
+                gate_r = regularizers.l2(0.01)
+                self.gate_layer = GateLayer(self.ome_shape, 
+                                            activation = self.gate_activation,
+                                            kernel_regularizer = gate_r,
+                                            name = 'gate_layer')
+            else:
+                self.gate_layer = GateLayer(self.ome_shape, 
+                                            activation = self.gate_activation,
+                                            name = 'gate_layer')
         
         # build image autoencoder
         
@@ -444,7 +454,7 @@ class XAE():
         x = Dense(self.inter_dim * 16, 
                   activation = 'relu')(x) 
         
-        if self.do_gate_omics:
+        if (self.do_gate_omics) & (self.do_gate_backend):
             x = Dense(self.ome_shape[0], 
                       activation = 'relu')(x)
             omic_output = self.gate_layer(x)
@@ -479,12 +489,9 @@ class XAE():
         
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.img_shape)
-        
+        rec_loss *= np.prod(self.ome_shape)
+
         mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
-        
-        #rec_loss = K.print_tensor(rec_loss, message='rec loss = ')
-        #mutual_encoding_loss = K.print_tensor(mutual_encoding_loss, 
-        #                                      message='me loss = ')
         
         return K.mean(rec_loss + mutual_encoding_loss)
     
@@ -494,7 +501,8 @@ class XAE():
         
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.ome_shape)
-        
+        rec_loss *= np.prod(self.img_shape)
+
         mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
         
         return K.mean(rec_loss + mutual_encoding_loss)
@@ -505,7 +513,8 @@ class XAE():
         
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.img_shape)
-        
+        rec_loss *= np.prod(self.ome_shape)
+
         kl_loss = (1 + self.img_z_log_var - 
                    K.square(self.img_z_mean) - K.exp(self.img_z_log_var))
                    
@@ -520,7 +529,8 @@ class XAE():
                 
         rec_loss = mse(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.ome_shape)
-        
+        rec_loss *= np.prod(self.img_shape)
+
         kl_loss = (1 + self.ome_z_log_var - 
                    K.square(self.ome_z_mean) - K.exp(self.ome_z_log_var))
                    
@@ -928,7 +938,6 @@ class XAE():
                                               'recon_omics_test.csv'),
                                  index = False)
 
-
         # save cycled reconstructions
         
         print('generating image cycled reconstructions')
@@ -1009,7 +1018,9 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
+    parser.add_argument('--do_gate_backend', type = int, default = 0)
     parser.add_argument('--gate_activation', type = str, default = 'sigmoid')
+    parser.add_argument('--gate_l2', type = int, default = 0)
     parser.add_argument('--dataset', type = str, default = 'test')
     parser.add_argument('--test_rand_add', type = float, default = 0.2)
     parser.add_argument('--verbose', type = int, default = 1)    
@@ -1017,7 +1028,6 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-        
     xae_model = XAE(learning_rate = args.learning_rate,
                     lambda_1 = args.lambda_1,
                     lambda_2 = args.lambda_2,
@@ -1036,7 +1046,9 @@ if __name__ == '__main__':
                     do_save_images = args.do_save_images,
                     do_save_input_data = args.do_save_input_data,
                     do_gate_omics = args.do_gate_omics,
+                    do_gate_backend = args.do_gate_backend,
                     gate_activation = args.gate_activation,
+                    gate_l2 = args.gate_l2,
                     dataset = args.dataset,
                     test_rand_add = args.test_rand_add,
                     verbose = args.verbose,
