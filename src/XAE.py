@@ -25,17 +25,16 @@ from PIL import Image
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
 
+# TODO: save 2D image of gate weights
+# TODO: programmable weight layer
+# TODO: Noise Inject/ AUC
 # TODO: MNIST, evaluate zeroing noise
 # TODO: save reconstructed images as uint
-# TODO: training/test split of celeba
-# TODO: on-the-fly error correction 
 # TODO: implement data augmentation
 # TODO: implement cyclic learning rates
-# TODO: make sure all data as float32
 # TODO: redefine 'image' and 'omic' as A and B
 # TODO: add A_name, B_name for easy reference
 # TODO: append an alpha to penalize kl contribution
-# TODO: balance kl loss as function of size of data (for xent)
 # TODO: gate layer for image channels
 # TODO: loss balance, particularly in cycleLoss
 # TODO: feature space walking for domain correlations
@@ -57,14 +56,16 @@ class GateLayer(Layer):
         
         super(GateLayer, self).__init__(**kwargs)
 
+
     def build(self, input_shape):
         self.kernel = self.add_weight(name = 'kernel', 
                                       shape = (1, input_shape[1]),
                                       initializer = 'uniform',
                                       trainable = True,
-                                      regularizer=self.kernel_regularizer)
+                                      regularizer = self.kernel_regularizer)
         
         super(GateLayer, self).build(input_shape)  
+        
         
     def call(self, x):
         output = x * self.kernel    
@@ -97,7 +98,7 @@ class XAE():
                  do_gate_omics = 0,
                  do_gate_backend = 0,
                  gate_activation = 'tanh',
-                 gate_l2 = 0,
+                 gate_regularizer = None,
                  n_imgs_to_save = 30,
                  dataset = 'MNIST',
                  test_rand_add = 0,
@@ -131,7 +132,7 @@ class XAE():
         self.do_gate_omics = do_gate_omics
         self.do_gate_backend = do_gate_backend
         self.gate_activation = gate_activation
-        self.gate_l2 = gate_l2
+        self.gate_regularizer = gate_regularizer
         
         self.dataset = dataset
         self.test_rand_add = test_rand_add
@@ -151,7 +152,7 @@ class XAE():
             self.LoadCelebAData()
         else:
             self.LoadDataFromDir()
-            
+                
         if self.test_rand_add != 0:
             self.AddDomainCorruption()
         
@@ -182,17 +183,15 @@ class XAE():
         
         # build gate layer
         
-        if self.do_gate_omics:
-            if self.gate_l2:
-                gate_r = regularizers.l2(0.01)
-                self.gate_layer = GateLayer(self.ome_shape, 
-                                            activation = self.gate_activation,
-                                            kernel_regularizer = gate_r,
-                                            name = 'gate_layer')
-            else:
-                self.gate_layer = GateLayer(self.ome_shape, 
-                                            activation = self.gate_activation,
-                                            name = 'gate_layer')
+        if self.gate_regularizer == 'L2':
+            self.gate_regularizer = regularizers.l2(0.01)
+        elif self.gate_regularizer == 'L1':
+            self.gate_regularizer = regularizers.l1(0.01)
+        
+        self.gate_layer = GateLayer(self.ome_shape, 
+                                    activation = self.gate_activation,
+                                    kernel_regularizer = self.gate_regularizer,
+                                    name = 'gate_layer')
         
         # build image autoencoder
         
@@ -260,20 +259,6 @@ class XAE():
                            loss = self.OmeVAELoss)
         
         self.SavePlotModels()
-        
-        # train and encode data
-
-        self.Train()
-        
-        if self.do_gate_omics:
-            gate_weights = self.O_E.layers[1].get_weights()[0][0]
-            np.savetxt(os.path.join(self.save_dir, 'gate_weights.csv'), 
-                       gate_weights, 
-                       delimiter = ',')
-
-        self.SaveEncodedData()
-        self.SaveReconstructedData()
-        self.SaveTranslatedData()
         
         
 
@@ -526,10 +511,24 @@ class XAE():
         return K.mean(rec_loss + kl_loss)
 
 
+
     def OmeVAELoss(self, y_true, y_pred):
         ''' compute vae loss for omic vae '''
-                
-        rec_loss = mse(K.flatten(y_true), K.flatten(y_pred))
+        
+        y_true = K.flatten(y_true)
+        y_pred = K.flatten(y_pred)
+        
+        # if gating, need to pull gate weights and multiply y_pred
+        if self.do_gate_omics:
+            gate_weights = self.gate_layer.get_weights()[0]
+            # replicate weights by batch_size
+            rep_gate_weights = np.repeat(gate_weights, self.batch_size)
+            
+        y_true = y_true * rep_gate_weights
+        y_pred = y_pred * rep_gate_weights
+            
+        rec_loss = binary_crossentropy(y_true, y_pred)
+        
         rec_loss *= np.prod(self.ome_shape)
         rec_loss *= np.prod(self.img_shape)
 
@@ -601,10 +600,10 @@ class XAE():
         self.ome_test = self.img_test.reshape(-1, np.prod(x_test.shape[1:]))
 
         if self.dataset == 'test':
-            self.img_train = self.img_train[0:200]
-            self.img_test = self.img_test[0:200]
-            self.ome_train = self.ome_train[0:200]
-            self.ome_test = self.ome_test[0:200]
+            self.img_train = self.img_train[0:300]
+            self.img_test = self.img_test[0:300]
+            self.ome_train = self.ome_train[0:300]
+            self.ome_test = self.ome_test[0:300]
         
         # save labels
         pd.DataFrame(y_train).to_csv(os.path.join(self.save_dir, 
@@ -762,6 +761,12 @@ class XAE():
         img_idx = [i for i in range(len(self.img_train))]
         ome_idx = [i for i in range(len(self.ome_train))]
             
+        # steps per epoch (1-max)
+        n_img = self.batch_size*(len(self.img_train) // self.batch_size)
+        n_ome = self.batch_size*(len(self.ome_train) // self.batch_size)
+        n_img_test = self.batch_size*(len(self.img_test) // self.batch_size)
+        n_ome_test = self.batch_size*(len(self.ome_test) // self.batch_size)
+
         self.InitImageSaver()
         
         for epoch in range(self.epochs):
@@ -776,16 +781,15 @@ class XAE():
             # fit autoencoders
 
             print('fitting image autoencoder')
-            I_A_history = self.I_A.fit(x = self.img_train[img_idx,...],
-                                       y = self.img_train[img_idx,...],
+            I_A_history = self.I_A.fit(x = self.img_train[img_idx][:n_img],
+                                       y = self.img_train[img_idx][:n_img],
                                        epochs = 1,
                                        batch_size = self.batch_size,
                                        verbose = self.verbose)
-
             
             print('fitting omic autoencoder')
-            O_A_history = self.O_A.fit(x = self.ome_train[ome_idx,...],
-                                       y = self.ome_train[ome_idx,...],
+            O_A_history = self.O_A.fit(x = self.ome_train[ome_idx][:n_ome],
+                                       y = self.ome_train[ome_idx][:n_ome],
                                        epochs = 1,
                                        batch_size = self.batch_size,
                                        verbose = self.verbose)
@@ -793,15 +797,15 @@ class XAE():
             # fit domain translators
             
             print('fitting domain translator I2O2I')
-            I2O2I_history = self.I2O2I.fit(x = self.img_train[img_idx,...], 
-                                           y = self.img_train[img_idx,...], 
+            I2O2I_history = self.I2O2I.fit(x = self.img_train[img_idx][:n_img], 
+                                           y = self.img_train[img_idx][:n_img], 
                                            epochs = 1,
                                            batch_size = self.batch_size,
                                            verbose = self.verbose)
             
             print('fitting domain translator O2I2O')
-            O2I2O_history = self.O2I2O.fit(x = self.ome_train[ome_idx,...],
-                                           y = self.ome_train[ome_idx,...],
+            O2I2O_history = self.O2I2O.fit(x = self.ome_train[ome_idx][:n_ome],
+                                           y = self.ome_train[ome_idx][:n_ome],
                                            epochs = 1,
                                            batch_size = self.batch_size,
                                            verbose = self.verbose)            
@@ -809,17 +813,17 @@ class XAE():
             # evaluate models on testing data
             
             print('evaluating trained models on test set')
-            I_A_eval = self.I_A.evaluate(x = self.img_test,
-                                         y = self.img_test)
+            I_A_eval = self.I_A.evaluate(x = self.img_test[:n_img_test],
+                                         y = self.img_test[:n_img_test])
             
-            O_A_eval = self.O_A.evaluate(x = self.ome_test,
-                                         y = self.ome_test)
+            O_A_eval = self.O_A.evaluate(x = self.ome_test[:n_ome_test],
+                                         y = self.ome_test[:n_ome_test])
             
-            I2O2I_eval = self.I2O2I.evaluate(x = self.img_test,
-                                             y = self.img_test)
+            I2O2I_eval = self.I2O2I.evaluate(x = self.img_test[:n_img_test],
+                                             y = self.img_test[:n_img_test])
                         
-            O2I2O_eval = self.O2I2O.evaluate(x = self.ome_test,
-                                             y = self.ome_test)
+            O2I2O_eval = self.O2I2O.evaluate(x = self.ome_test[:n_ome_test],
+                                             y = self.ome_test[:n_ome_test])
             
             # append histories
 
@@ -843,12 +847,20 @@ class XAE():
             if self.do_save_images:
                 self.AddReconstructionsToSaver()
         
+        if self.do_gate_omics:
+            gate_weights = self.gate_layer.get_weights()[0]
+            np.savetxt(os.path.join(self.save_dir, 'gate_weights.csv'), 
+                       gate_weights, 
+                       delimiter = ',')
+
+        self.SaveEncodedData()
+        self.SaveReconstructedData()
+        self.SaveTranslatedData()
+        
+        
         if self.do_save_models:
             self.SaveModels(epoch)
             
-        if self.do_gate_omics:
-            print('saving omics gate')
-        
         
     def SaveModels(self, epoch):
         ''' save XAE model '''
@@ -1014,15 +1026,15 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type = int, default = 1)
     parser.add_argument('--n_imgs_to_save', type = int, default = 30)
     parser.add_argument('--project_dir', type = str, default = '.')
-    parser.add_argument('--save_dir', type = str, default = 'results/test')
-    parser.add_argument('--data_dir', type = str, default = 'data/test')
+    parser.add_argument('--save_dir', type = str, default = '../results/test')
+    parser.add_argument('--data_dir', type = str, default = '../data/test')
     parser.add_argument('--do_save_models', type = int, default = 0)
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 1)
     parser.add_argument('--do_gate_backend', type = int, default = 0)
     parser.add_argument('--gate_activation', type = str, default = 'sigmoid')
-    parser.add_argument('--gate_l2', type = int, default = 0)
+    parser.add_argument('--gate_regularizer', type = int, default = None)
     parser.add_argument('--dataset', type = str, default = 'test')
     parser.add_argument('--test_rand_add', type = float, default = 0.2)
     parser.add_argument('--verbose', type = int, default = 1)    
@@ -1050,10 +1062,12 @@ if __name__ == '__main__':
                     do_gate_omics = args.do_gate_omics,
                     do_gate_backend = args.do_gate_backend,
                     gate_activation = args.gate_activation,
-                    gate_l2 = args.gate_l2,
+                    gate_regularizer = args.gate_regularizer,
                     dataset = args.dataset,
                     test_rand_add = args.test_rand_add,
                     verbose = args.verbose,
                     omic_activation = args.omic_activation)
+    
+    xae_model.Train()
     
     
