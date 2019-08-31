@@ -814,16 +814,20 @@ class XAE():
             
             print('evaluating trained models on test set')
             I_A_eval = self.I_A.evaluate(x = self.img_test[:n_img_test],
-                                         y = self.img_test[:n_img_test])
+                                         y = self.img_test[:n_img_test],
+                                         batch_size = self.batch_size)
             
             O_A_eval = self.O_A.evaluate(x = self.ome_test[:n_ome_test],
-                                         y = self.ome_test[:n_ome_test])
+                                         y = self.ome_test[:n_ome_test],
+                                         batch_size = self.batch_size)
             
             I2O2I_eval = self.I2O2I.evaluate(x = self.img_test[:n_img_test],
-                                             y = self.img_test[:n_img_test])
+                                             y = self.img_test[:n_img_test],
+                                             batch_size = self.batch_size)
                         
             O2I2O_eval = self.O2I2O.evaluate(x = self.ome_test[:n_ome_test],
-                                             y = self.ome_test[:n_ome_test])
+                                             y = self.ome_test[:n_ome_test],
+                                             batch_size = self.batch_size)
             
             # append histories
 
@@ -1034,9 +1038,9 @@ if __name__ == '__main__':
     parser.add_argument('--do_gate_omics', type = int, default = 1)
     parser.add_argument('--do_gate_backend', type = int, default = 0)
     parser.add_argument('--gate_activation', type = str, default = 'sigmoid')
-    parser.add_argument('--gate_regularizer', type = int, default = None)
+    parser.add_argument('--gate_regularizer', type = str, default = None)
     parser.add_argument('--dataset', type = str, default = 'test')
-    parser.add_argument('--test_rand_add', type = float, default = 0.2)
+    parser.add_argument('--test_rand_add', type = float, default = 0.4)
     parser.add_argument('--verbose', type = int, default = 1)    
     parser.add_argument('--omic_activation', type = str, default = 'relu')
     
