@@ -852,7 +852,7 @@ class XAE():
                 self.AddReconstructionsToSaver()
         
         if self.do_gate_omics:
-            gate_weights = self.gate_layer.get_weights()[0]
+            gate_weights = self.gate_layer.get_weights()[0][0]  
             np.savetxt(os.path.join(self.save_dir, 'gate_weights.csv'), 
                        gate_weights, 
                        delimiter = ',')
