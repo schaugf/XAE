@@ -25,6 +25,7 @@ from PIL import Image
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
 
+# TODO: PRIORITY: for MNIST, generate domain translated reconstructions
 # TODO: save 2D image of gate weights
 # TODO: programmable weight layer
 # TODO: Noise Inject/ AUC
@@ -523,12 +524,10 @@ class XAE():
             gate_weights = self.gate_layer.get_weights()[0]
             # replicate weights by batch_size
             rep_gate_weights = np.repeat(gate_weights, self.batch_size)
-            
-        y_true = y_true * rep_gate_weights
-        y_pred = y_pred * rep_gate_weights
+            y_true = y_true * rep_gate_weights
+            y_pred = y_pred * rep_gate_weights
             
         rec_loss = binary_crossentropy(y_true, y_pred)
-        
         rec_loss *= np.prod(self.ome_shape)
         rec_loss *= np.prod(self.img_shape)
 
@@ -852,11 +851,22 @@ class XAE():
                 self.AddReconstructionsToSaver()
         
         if self.do_gate_omics:
-            gate_weights = self.gate_layer.get_weights()[0][0]  
+            gate_weights = self.gate_layer.get_weights()[0][0] 
             np.savetxt(os.path.join(self.save_dir, 'gate_weights.csv'), 
                        gate_weights, 
                        delimiter = ',')
-
+            if self.dataset == 'MNIST':
+                g = pd.read_csv(os.path.join(self.save_dir, 
+                                             'gate_weights.csv'))
+                g = np.array(g)
+                # strip off remainder noise elements
+                nrm = np.mod(len(g), 28)
+                gim = g[:-nrm].reshape(-1, 28)
+                gim = gim ** 2
+                mx = (gim * (255 / gim.max())).astype(np.uint8)
+                Image.fromarray(mx).save(os.path.join(self.save_dir, 
+                                                      'gate_2d.jpg'))
+                
         self.SaveEncodedData()
         self.SaveReconstructedData()
         self.SaveTranslatedData()
