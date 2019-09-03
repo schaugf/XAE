@@ -98,6 +98,7 @@ class XAE():
                  do_save_input_data = 0,
                  do_gate_omics = 0,
                  do_gate_backend = 0,
+                 do_gate_reconstruction = 0,
                  gate_activation = 'tanh',
                  gate_regularizer = None,
                  n_imgs_to_save = 30,
@@ -132,6 +133,7 @@ class XAE():
         self.do_save_input_data = do_save_input_data
         self.do_gate_omics = do_gate_omics
         self.do_gate_backend = do_gate_backend
+        self.do_gate_reconstruction = do_gate_reconstruction
         self.gate_activation = gate_activation
         self.gate_regularizer = gate_regularizer
         
@@ -486,7 +488,18 @@ class XAE():
     def OmeCycleLoss(self, y_true, y_pred):
         ''' loss for cyclic transformation '''
         
-        rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
+        y_true = K.flatten(y_true)
+        y_pred = K.flatten(y_pred)
+        
+        # if gating, need to pull gate weights and multiply y_pred
+        if self.do_gate_reconstruction:
+            gate_weights = self.gate_layer.get_weights()[0]
+            # replicate weights by batch_size
+            rep_gate_weights = np.repeat(gate_weights, self.batch_size)
+            y_true = y_true * rep_gate_weights
+            y_pred = y_pred * rep_gate_weights
+        
+        rec_loss = binary_crossentropy(y_true, y_pred)
         rec_loss *= np.prod(self.ome_shape)
         rec_loss *= np.prod(self.img_shape)
 
@@ -520,7 +533,7 @@ class XAE():
         y_pred = K.flatten(y_pred)
         
         # if gating, need to pull gate weights and multiply y_pred
-        if self.do_gate_omics:
+        if self.do_gate_reconstruction:
             gate_weights = self.gate_layer.get_weights()[0]
             # replicate weights by batch_size
             rep_gate_weights = np.repeat(gate_weights, self.batch_size)
@@ -859,6 +872,7 @@ class XAE():
                 g = pd.read_csv(os.path.join(self.save_dir, 
                                              'gate_weights.csv'))
                 g = np.array(g)
+                
                 # strip off remainder noise elements
                 nrm = np.mod(len(g), 28)
                 gim = g[:-nrm].reshape(-1, 28)
@@ -1045,8 +1059,9 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_models', type = int, default = 0)
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
-    parser.add_argument('--do_gate_omics', type = int, default = 1)
+    parser.add_argument('--do_gate_omics', type = int, default = 0)
     parser.add_argument('--do_gate_backend', type = int, default = 0)
+    parser.add_argument('--do_gate_reconstruction', type = int, default = 1)
     parser.add_argument('--gate_activation', type = str, default = 'sigmoid')
     parser.add_argument('--gate_regularizer', type = str, default = None)
     parser.add_argument('--dataset', type = str, default = 'test')
@@ -1075,6 +1090,7 @@ if __name__ == '__main__':
                     do_save_input_data = args.do_save_input_data,
                     do_gate_omics = args.do_gate_omics,
                     do_gate_backend = args.do_gate_backend,
+                    do_gate_reconstruction = args.do_gate_reconstruction,
                     gate_activation = args.gate_activation,
                     gate_regularizer = args.gate_regularizer,
                     dataset = args.dataset,
