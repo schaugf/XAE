@@ -101,7 +101,8 @@ class XAE():
                  dataset = 'MNIST',
                  test_rand_add = 0,
                  verbose = 1,
-                 omic_activation = 'relu'
+                 omic_activation = 'relu',
+                 med_lambda = 1
                  ):
         
         # instantiate self parameters
@@ -131,6 +132,7 @@ class XAE():
         self.do_gate_reconstruction = do_gate_reconstruction
         self.gate_activation = gate_activation
         self.gate_regularizer = gate_regularizer
+        self.med_lambda = med_lambda
         
         self.dataset = dataset
         self.test_rand_add = test_rand_add
@@ -187,6 +189,8 @@ class XAE():
             self.gate_regularizer = regularizers.l2(0.01)
         elif self.gate_regularizer == 'L1':
             self.gate_regularizer = regularizers.l1(0.01)
+        else:
+            self.gate_regularizer = None
         
         self.gate_layer = GateLayer(self.ome_shape, 
                                     activation = self.gate_activation,
@@ -304,7 +308,7 @@ class XAE():
         ''' encode image into shared latent space '''
         
         x = Conv2D(filters = 64, 
-                   kernel_size = 3, 
+                   kernel_size = 3,
                    activation = 'relu')(self.image_input)
         
         x = Conv2D(filters = 32, 
@@ -335,7 +339,7 @@ class XAE():
         
         self.img_latent = self.latent_layer([self.img_z_mean, 
                                              self.img_z_log_var])
-         
+    
         return Model(inputs = self.image_input, 
                      outputs = self.img_latent,
                      name = name)
@@ -497,6 +501,7 @@ class XAE():
 
         mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
         mutual_encoding_loss *= self.latent_dim
+        mutual_encoding_loss *= self.med_lambda
 
         return K.mean(rec_loss + mutual_encoding_loss)
     
@@ -722,13 +727,7 @@ class XAE():
         
         self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
                                            axis = 1)
-        
-        self.SaveReconstructionImage()
-        
-        
-    def SaveReconstructionImage(self):
-        ''' save panel of reconstructed images '''
-        
+                
         image_to_save = (self.imgs_to_save * 255).astype(np.uint8)
         
         if image_to_save.shape[2] == 3:  # color image
@@ -741,8 +740,7 @@ class XAE():
                 single_channel = image_to_save[...,i]
                 save_image = Image.fromarray(single_channel)
                 save_image.save(os.path.join(self.save_dir, save_file_name))
-            
-         
+
 
     def Train(self):
         ''' train XAE model '''
@@ -861,23 +859,19 @@ class XAE():
             np.savetxt(os.path.join(self.save_dir, 'gate_weights.csv'), 
                        gate_weights, 
                        delimiter = ',')
-            if self.dataset == 'MNIST':
-                g = pd.read_csv(os.path.join(self.save_dir, 
-                                             'gate_weights.csv'))
-                g = np.array(g)
-                
-                # strip off remainder noise elements
-                nrm = np.mod(len(g), 28)
-                gim = g[:-nrm].reshape(-1, 28)
-                gim = gim ** 2
-                mx = (gim * (255 / gim.max())).astype(np.uint8)
-                Image.fromarray(mx).save(os.path.join(self.save_dir, 
-                                                      'gate_2d.jpg'))
+        
+            g = np.array(gate_weights)
+            # strip off remainder noise elements
+            nrm = np.mod(len(g), self.img_train.shape[1])
+            gim = g[:-nrm].reshape(-1, self.img_train.shape[1])
+            gim = gim ** 2
+            mx = (gim * (255 / gim.max())).astype(np.uint8)
+            Image.fromarray(mx).save(os.path.join(self.save_dir, 
+                                                  'gate_2d.jpg'))
                 
         self.SaveEncodedData()
         self.SaveReconstructedData()
         self.SaveTranslatedData()
-        
         
         if self.do_save_models:
             self.SaveModels(epoch)
@@ -1044,8 +1038,8 @@ if __name__ == '__main__':
     parser.add_argument('--data_class_2', type = str, default = 'omic')
     parser.add_argument('--beta_1', type = float, default = 0.9)
     parser.add_argument('--beta_2', type = float, default = 0.99)
-    parser.add_argument('--latent_dim', type = int, default = 8)
-    parser.add_argument('--batch_size', type = int, default = 32)
+    parser.add_argument('--latent_dim', type = int, default = 16)
+    parser.add_argument('--batch_size', type = int, default = 64)
     parser.add_argument('--epochs', type = int, default = 1)
     parser.add_argument('--n_imgs_to_save', type = int, default = 20)
     parser.add_argument('--project_dir', type = str, default = '.')
@@ -1055,13 +1049,14 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 0)
-    parser.add_argument('--do_gate_reconstruction', type = int, default = 0)
-    parser.add_argument('--gate_activation', type = str, default = 'sigmoid')
+    parser.add_argument('--do_gate_reconstruction', type = int, default = 1)
+    parser.add_argument('--gate_activation', type = str, default = 'tanh')
     parser.add_argument('--gate_regularizer', type = str, default = None)
     parser.add_argument('--dataset', type = str, default = 'test')
     parser.add_argument('--test_rand_add', type = float, default = 0.4)
     parser.add_argument('--verbose', type = int, default = 1)    
-    parser.add_argument('--omic_activation', type = str, default = 'relu')
+    parser.add_argument('--omic_activation', type = str, default = 'sigmoid')
+    parser.add_argument('--med_lambda', type=int, default = 10)
     
     args = parser.parse_args()
     
@@ -1089,7 +1084,8 @@ if __name__ == '__main__':
                     dataset = args.dataset,
                     test_rand_add = args.test_rand_add,
                     verbose = args.verbose,
-                    omic_activation = args.omic_activation)
+                    omic_activation = args.omic_activation,
+                    med_lambda = args.med_lambda)
     
     xae_model.Train()
     
