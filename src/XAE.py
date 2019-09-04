@@ -25,12 +25,9 @@ from PIL import Image
 os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE' 
 
 
-# TODO: PRIORITY: for MNIST, generate domain translated reconstructions
-# TODO: save 2D image of gate weights
 # TODO: programmable weight layer
-# TODO: Noise Inject/ AUC
+# TODO: PWGL AUC, cutoff
 # TODO: MNIST, evaluate zeroing noise
-# TODO: save reconstructed images as uint
 # TODO: implement data augmentation
 # TODO: implement cyclic learning rates
 # TODO: redefine 'image' and 'omic' as A and B
@@ -97,7 +94,6 @@ class XAE():
                  do_save_images = 1,
                  do_save_input_data = 0,
                  do_gate_omics = 0,
-                 do_gate_backend = 0,
                  do_gate_reconstruction = 0,
                  gate_activation = 'tanh',
                  gate_regularizer = None,
@@ -132,7 +128,6 @@ class XAE():
         self.do_save_images = do_save_images
         self.do_save_input_data = do_save_input_data
         self.do_gate_omics = do_gate_omics
-        self.do_gate_backend = do_gate_backend
         self.do_gate_reconstruction = do_gate_reconstruction
         self.gate_activation = gate_activation
         self.gate_regularizer = gate_regularizer
@@ -155,17 +150,19 @@ class XAE():
             self.LoadCelebAData()
         else:
             self.LoadDataFromDir()
-                
+        
+        # store original shape for corruption handling
+        self.init_ome_shape = self.ome_train.shape[1]
+        print('original omic train shape', self.init_ome_shape)
+
         if self.test_rand_add != 0:
             self.AddDomainCorruption()
         
         if self.do_save_input_data:
             self.SaveInputData()
             
-            
         self.ome_shape = self.ome_train.shape[1:]
         self.img_shape = self.img_train.shape[1:]
-        
         print('training image shape', self.img_shape)
         print('training omic shape', self.ome_shape)
 
@@ -263,7 +260,8 @@ class XAE():
         
         self.SavePlotModels()
         
-        
+        self.InitImageSaver()
+
 
     def SavePlotModels(self):
         ''' save plots of models as pngs '''   
@@ -441,16 +439,10 @@ class XAE():
         
         x = Dense(self.inter_dim * 16, 
                   activation = 'relu')(x) 
-        
-        if (self.do_gate_omics) & (self.do_gate_backend):
-            x = Dense(self.ome_shape[0], 
-                      activation = 'relu')(x)
-            omic_output = self.gate_layer(x)
-            
-        else:
-            omic_output = Dense(self.ome_shape[0], 
-                                activation = self.omic_activation)(x)
-        
+       
+        omic_output = Dense(self.ome_shape[0], 
+                            activation = self.omic_activation)(x)
+    
         return Model(inputs = omic_decoder_input, 
                      outputs = omic_output, 
                      name = name)    
@@ -523,7 +515,6 @@ class XAE():
         kl_loss *= -0.5       
         
         return K.mean(rec_loss + kl_loss)
-
 
 
     def OmeVAELoss(self, y_true, y_pred):
@@ -651,38 +642,34 @@ class XAE():
  
     def AddDomainCorruption(self):
         ''' append domain-specific corruption '''
+    
+        print('corrupting omics domain')
+        n_samples_to_add = int(self.ome_train.shape[1] * 
+                               self.test_rand_add /
+                               (1 - self.test_rand_add))
         
-        if self.test_rand_add != 0:
-            print('corrupting omics domain')
-            print('original omic train shape', self.ome_train.shape)
-
-            n_samples_to_add = int(self.ome_train.shape[1] * 
-                                   self.test_rand_add /
-                                   (1 - self.test_rand_add))
-            
-            train_shape_to_add = (self.ome_train.shape[0], n_samples_to_add)
-            test_shape_to_add = (self.ome_test.shape[0], n_samples_to_add)
-            
-            sample_space = np.reshape(self.ome_train, -1)
-
-            train_samples = np.random.choice(sample_space, 
-                                             np.prod(train_shape_to_add))
-            
-            test_samples = np.random.choice(sample_space, 
-                                             np.prod(test_shape_to_add))
-            
-            train_samples = np.reshape(train_samples, train_shape_to_add)
-            test_samples = np.reshape(test_samples, test_shape_to_add)
+        train_shape_to_add = (self.ome_train.shape[0], n_samples_to_add)
+        test_shape_to_add = (self.ome_test.shape[0], n_samples_to_add)
         
-            self.ome_train = np.concatenate((self.ome_train, train_samples), 
-                                            axis = 1)
-            
-            self.ome_test = np.concatenate((self.ome_test, test_samples), 
-                                            axis = 1)
-            
-            print('corrupted omic train shape', self.ome_train.shape)
-            print('corrupted omic test shape', self.ome_test.shape)
-            
+        sample_space = np.reshape(self.ome_train, -1)
+
+        train_samples = np.random.choice(sample_space, 
+                                         np.prod(train_shape_to_add))
+        
+        test_samples = np.random.choice(sample_space, 
+                                         np.prod(test_shape_to_add))
+        
+        train_samples = np.reshape(train_samples, train_shape_to_add)
+        test_samples = np.reshape(test_samples, test_shape_to_add)
+    
+        self.ome_train = np.concatenate((self.ome_train, train_samples), 
+                                        axis = 1)
+        
+        self.ome_test = np.concatenate((self.ome_test, test_samples), 
+                                        axis = 1)
+        
+        print('corrupted omic train shape', self.ome_train.shape)
+        print('corrupted omic test shape', self.ome_test.shape)
             
 
     def SaveInputData(self):
@@ -701,28 +688,36 @@ class XAE():
         ''' create empty array to which to save images '''
                 
         self.imgs_to_save_stack = self.img_train[0:self.n_imgs_to_save,:]
-        
         self.imgs_to_save = np.concatenate(self.imgs_to_save_stack)
-        
-        print('images to save have shape', self.imgs_to_save.shape)
         
     
     def AddReconstructionsToSaver(self):
         ''' add a column of images to a stack '''
         
-        print('generating predictions for saving')
+        # image autoencoder reconstruction
         i_a_recon = self.I_A.predict(self.imgs_to_save_stack)
-        flat_i_a_recon = np.concatenate(i_a_recon)
         
+        # identity cycle consistent image
         i2o = self.I2O.predict(self.imgs_to_save_stack)
         o2i = self.O2I.predict(i2o)
         
+        # omics translation
+        i2o = i2o[:,:self.init_ome_shape]
+        i2o = i2o.reshape(self.n_imgs_to_save, 
+                          self.img_train.shape[1],
+                          self.img_train.shape[2],
+                          1)
+        
+        # concatenate into columns
+        flat_i_a_recon = np.concatenate(i_a_recon)
         flat_c_c_recon = np.concatenate(o2i)
+        flat_i2o_pred = np.concatenate(i2o)
         
         img_to_add = np.concatenate((np.ones((flat_i_a_recon.shape[0], 
                                               1, 
                                               flat_i_a_recon.shape[2])),
                                      flat_i_a_recon,
+                                     flat_i2o_pred,
                                      flat_c_c_recon), axis = 1)
         
         self.imgs_to_save = np.concatenate((self.imgs_to_save, img_to_add), 
@@ -778,8 +773,6 @@ class XAE():
         n_ome = self.batch_size*(len(self.ome_train) // self.batch_size)
         n_img_test = self.batch_size*(len(self.img_test) // self.batch_size)
         n_ome_test = self.batch_size*(len(self.ome_test) // self.batch_size)
-
-        self.InitImageSaver()
         
         for epoch in range(self.epochs):
                 
@@ -1030,10 +1023,12 @@ class XAE():
         
         print('translating omics to imaging domain')
         omics2images_train = self.O2I.predict(self.ome_train)
+        omics2images_train = (omics2images_train * 255).astype(np.uint8)
         np.save(os.path.join(translated_dir, 'omics2images_train.npy'), 
                 omics2images_train)
         
         omics2images_test = self.O2I.predict(self.ome_test)
+        omics2images_test = (omics2images_test * 255).astype(np.uint8)
         np.save(os.path.join(translated_dir, 'omics2images_test.npy'), 
                 omics2images_test)
         
@@ -1052,7 +1047,7 @@ if __name__ == '__main__':
     parser.add_argument('--latent_dim', type = int, default = 8)
     parser.add_argument('--batch_size', type = int, default = 32)
     parser.add_argument('--epochs', type = int, default = 1)
-    parser.add_argument('--n_imgs_to_save', type = int, default = 30)
+    parser.add_argument('--n_imgs_to_save', type = int, default = 20)
     parser.add_argument('--project_dir', type = str, default = '.')
     parser.add_argument('--save_dir', type = str, default = '../results/test')
     parser.add_argument('--data_dir', type = str, default = '../data/test')
@@ -1060,8 +1055,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
     parser.add_argument('--do_gate_omics', type = int, default = 0)
-    parser.add_argument('--do_gate_backend', type = int, default = 0)
-    parser.add_argument('--do_gate_reconstruction', type = int, default = 1)
+    parser.add_argument('--do_gate_reconstruction', type = int, default = 0)
     parser.add_argument('--gate_activation', type = str, default = 'sigmoid')
     parser.add_argument('--gate_regularizer', type = str, default = None)
     parser.add_argument('--dataset', type = str, default = 'test')
@@ -1089,7 +1083,6 @@ if __name__ == '__main__':
                     do_save_images = args.do_save_images,
                     do_save_input_data = args.do_save_input_data,
                     do_gate_omics = args.do_gate_omics,
-                    do_gate_backend = args.do_gate_backend,
                     do_gate_reconstruction = args.do_gate_reconstruction,
                     gate_activation = args.gate_activation,
                     gate_regularizer = args.gate_regularizer,
