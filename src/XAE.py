@@ -473,12 +473,12 @@ class XAE():
         
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.img_shape)
-        rec_loss *= np.prod(self.ome_shape)
 
-        mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
-        mutual_encoding_loss *= self.latent_dim
+        #mutual_encoding_loss = binary_crossentropy(self.img_latent, 
+        #                                           self.ome_latent)
+        #mutual_encoding_loss *= self.latent_dim
         
-        return K.mean(rec_loss + mutual_encoding_loss)
+        return K.mean(rec_loss)
     
     
     def OmeCycleLoss(self, y_true, y_pred):
@@ -487,23 +487,23 @@ class XAE():
         y_true = K.flatten(y_true)
         y_pred = K.flatten(y_pred)
         
-        # if gating, need to pull gate weights and multiply y_pred
-        if self.do_gate_reconstruction:
-            gate_weights = self.gate_layer.get_weights()[0]
-            # replicate weights by batch_size
-            rep_gate_weights = np.repeat(gate_weights, self.batch_size)
-            y_true = y_true * rep_gate_weights
-            y_pred = y_pred * rep_gate_weights
+#        # if gating, need to pull gate weights and multiply y_pred
+#        if self.do_gate_reconstruction:
+#            gate_weights = self.gate_layer.get_weights()[0]
+#            # replicate weights by batch_size
+#            rep_gate_weights = np.repeat(gate_weights, self.batch_size)
+#            y_true = y_true * rep_gate_weights
+#            y_pred = y_pred * rep_gate_weights
         
         rec_loss = binary_crossentropy(y_true, y_pred)
         rec_loss *= np.prod(self.ome_shape)
-        rec_loss *= np.prod(self.img_shape)
 
-        mutual_encoding_loss = mse(self.img_latent, self.ome_latent)
-        mutual_encoding_loss *= self.latent_dim
-        mutual_encoding_loss *= self.med_lambda
+        #mutual_encoding_loss = binary_crossentropy(self.img_latent, 
+        #                                           self.ome_latent)
+        #mutual_encoding_loss *= self.latent_dim
+        #mutual_encoding_loss *= self.med_lambda
 
-        return K.mean(rec_loss + mutual_encoding_loss)
+        return K.mean(rec_loss)
     
     
     def ImgVAELoss(self, y_true, y_pred):
@@ -511,7 +511,6 @@ class XAE():
         
         rec_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         rec_loss *= np.prod(self.img_shape)
-        rec_loss *= np.prod(self.ome_shape)
 
         kl_loss = (1 + self.img_z_log_var - 
                    K.square(self.img_z_mean) - K.exp(self.img_z_log_var))
@@ -527,18 +526,17 @@ class XAE():
         
         y_true = K.flatten(y_true)
         y_pred = K.flatten(y_pred)
-        
-        # if gating, need to pull gate weights and multiply y_pred
-        if self.do_gate_reconstruction:
-            gate_weights = self.gate_layer.get_weights()[0]
-            # replicate weights by batch_size
-            rep_gate_weights = np.repeat(gate_weights, self.batch_size)
-            y_true = y_true * rep_gate_weights
-            y_pred = y_pred * rep_gate_weights
+#        
+#        # if gating, need to pull gate weights and multiply y_pred
+#        if self.do_gate_reconstruction:
+#            gate_weights = self.gate_layer.get_weights()[0]
+#            # replicate weights by batch_size
+#            rep_gate_weights = np.repeat(gate_weights, self.batch_size)
+#            y_true = y_true * rep_gate_weights
+#            y_pred = y_pred * rep_gate_weights
             
         rec_loss = binary_crossentropy(y_true, y_pred)
         rec_loss *= np.prod(self.ome_shape)
-        rec_loss *= np.prod(self.img_shape)
 
         kl_loss = (1 + self.ome_z_log_var - 
                    K.square(self.ome_z_mean) - K.exp(self.ome_z_log_var))
@@ -1017,12 +1015,10 @@ class XAE():
         
         print('translating omics to imaging domain')
         omics2images_train = self.O2I.predict(self.ome_train)
-        omics2images_train = (omics2images_train * 255).astype(np.uint8)
         np.save(os.path.join(translated_dir, 'omics2images_train.npy'), 
                 omics2images_train)
         
         omics2images_test = self.O2I.predict(self.ome_test)
-        omics2images_test = (omics2images_test * 255).astype(np.uint8)
         np.save(os.path.join(translated_dir, 'omics2images_test.npy'), 
                 omics2images_test)
         
