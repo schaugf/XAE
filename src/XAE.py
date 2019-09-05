@@ -8,8 +8,9 @@ import argparse
 from random import shuffle
 
 from keras.models import Model
-from keras.layers import Input, Dense, Lambda, Reshape, Flatten
-from keras.layers import Conv2D, Conv2DTranspose, Layer
+from keras.layers import Input, Dense, Lambda, Reshape, Flatten, Dropout
+from keras.layers import Conv2D, Conv2DTranspose, Layer, MaxPooling2D
+
 from keras.optimizers import Adam
 from keras.losses import binary_crossentropy, mse
 from keras.utils import plot_model
@@ -307,29 +308,29 @@ class XAE():
     def ImageEncoder(self, name = None):
         ''' encode image into shared latent space '''
         
-        x = Conv2D(filters = 64, 
+        x = Conv2D(filters = 16, 
                    kernel_size = 3,
+                   padding = 'same',
                    activation = 'relu')(self.image_input)
-        
+
         x = Conv2D(filters = 32, 
                    kernel_size = 3, 
+                   padding = 'same',
                    activation = 'relu')(x)
-        
-        x = Conv2D(filters = 16, 
+
+        x = Conv2D(filters = 64, 
                    kernel_size = 3, 
+                   padding = 'same',
                    activation = 'relu')(x)
-        
-        x = Conv2D(filters = 8, 
-                   kernel_size = 3, 
-                   activation = 'relu')(x)
-        
-        x = Conv2D(filters = 4, 
-                   kernel_size = 3, 
+
+        x = Conv2D(filters = 128, 
+                   kernel_size = 3,
+                   padding = 'same',
                    activation = 'relu')(x)
         
         x = Flatten()(x)
         
-        x = Dense(self.inter_dim, 
+        x = Dense(16, 
                   activation = 'relu')(x)
         
         # reparameterization trick
@@ -355,22 +356,12 @@ class XAE():
         
         x = Reshape(self.img_shape)(x)
         
-        x = Conv2DTranspose(filters = 4,
+        x = Conv2DTranspose(filters = 256,
                             kernel_size = 3,
                             activation = 'relu',
                             padding = 'same')(x)
         
-        x = Conv2DTranspose(filters = 8,
-                            kernel_size = 3,
-                            activation = 'relu',
-                            padding = 'same')(x)
-        
-        x = Conv2DTranspose(filters = 16,
-                            kernel_size = 3,
-                            activation = 'relu',
-                            padding = 'same')(x)
-        
-        x = Conv2DTranspose(filters = 32,
+        x = Conv2DTranspose(filters = 128,
                             kernel_size = 3,
                             activation = 'relu',
                             padding = 'same')(x)
@@ -380,10 +371,20 @@ class XAE():
                             activation = 'relu',
                             padding = 'same')(x)
         
+        x = Conv2DTranspose(filters = 32,
+                            kernel_size = 3,
+                            activation = 'relu',
+                            padding = 'same')(x)
+        
+        x = Conv2DTranspose(filters = 16,
+                            kernel_size = 3,
+                            activation = 'relu',
+                            padding = 'same')(x)
+        
         image_output = Conv2DTranspose(filters = self.img_shape[2],
                                        kernel_size = 3,
-                                       activation='sigmoid',
-                                       padding='same')(x)
+                                       activation = 'sigmoid',
+                                       padding = 'same')(x)
         
         return Model(inputs = image_decoder_input, 
                      outputs = image_output, 
@@ -396,19 +397,19 @@ class XAE():
         if self.do_gate_omics:
             print('gating omics input with input shape', self.ome_shape[0])
             x = self.gate_layer(self.omic_input)
-            x = Dense(self.inter_dim * 16, 
+            x = Dense(self.inter_dim * 2, 
                       activation = 'relu')(x)
         else:
-            x = Dense(self.inter_dim * 16, 
+            x = Dense(self.inter_dim * 2, 
                       activation = 'relu')(self.omic_input)
             
-        x = Dense(self.inter_dim * 8, 
-                  activation = 'relu')(x)
-        
         x = Dense(self.inter_dim * 4, 
                   activation = 'relu')(x)
         
-        x = Dense(self.inter_dim * 2, 
+        x = Dense(self.inter_dim * 8, 
+                  activation = 'relu')(x)
+        
+        x = Dense(self.inter_dim * 16, 
                   activation = 'relu')(x)
         
         x = Dense(self.latent_dim, 
@@ -432,16 +433,16 @@ class XAE():
         
         omic_decoder_input = Input(shape = (self.latent_dim,))
         
-        x = Dense(self.inter_dim * 2, 
+        x = Dense(self.inter_dim * 16, 
                   activation = 'relu')(omic_decoder_input) 
 
-        x = Dense(self.inter_dim * 4, 
-                  activation = 'relu')(x) 
-        
         x = Dense(self.inter_dim * 8, 
                   activation = 'relu')(x) 
         
-        x = Dense(self.inter_dim * 16, 
+        x = Dense(self.inter_dim * 4, 
+                  activation = 'relu')(x) 
+        
+        x = Dense(self.inter_dim * 2, 
                   activation = 'relu')(x) 
        
         omic_output = Dense(self.ome_shape[0], 
@@ -1044,7 +1045,7 @@ if __name__ == '__main__':
     parser.add_argument('--do_save_models', type = int, default = 0)
     parser.add_argument('--do_save_images', type = int, default = 1)
     parser.add_argument('--do_save_input_data', type = int, default = 0)
-    parser.add_argument('--do_gate_omics', type = int, default = 0)
+    parser.add_argument('--do_gate_omics', type = int, default = 1)
     parser.add_argument('--do_gate_reconstruction', type = int, default = 1)
     parser.add_argument('--gate_activation', type = str, default = 'tanh')
     parser.add_argument('--gate_regularizer', type = str, default = None)
