@@ -11,7 +11,6 @@ from torch import nn, optim
 from torch.autograd import Variable
 from torch.nn import functional as F
 from torchvision import datasets, transforms
-from torchvision.utils import save_image
 #from torchsummary import summary
 
 
@@ -340,7 +339,7 @@ def cycle_loss(recon_x, x):
 
 
 def mutual_encoding_loss(z1, z2):
-    MED = F.mse_loss(z1, z2)
+    MED = F.mse_loss(z1, z2) * len(z1)
     return MED
     
 
@@ -438,8 +437,9 @@ def train(epoch, is_final):
     img_cyc_rec = return_dict['A2B2A_rec'][:20,0,:].detach().cpu().numpy()
     cyc_rec_stack = np.concatenate(list(img_cyc_rec))
     
+    # TODO: filter out noisy samples so always 28x28
     A2B = return_dict['A2B_pred'][:20]
-    A2B_stack = np.concatenate(list(A2B.reshape(8, 28, 28).detach().cpu().numpy()))
+    A2B_stack = np.concatenate(list(A2B.reshape(20, 28, 28).detach().cpu().numpy()))
     
     if epoch == 1:
         imgs_to_save = np.concatenate((gt_stack,
@@ -462,14 +462,14 @@ def train(epoch, is_final):
     to_save = Image.fromarray((255*imgs_to_save).astype(np.uint8))
     to_save.save(os.path.join(args.save_dir, 'image_reconstructions.png'))
     
-
     # TODO: save VAE reconstructions
     # TODO: save cycle reconstructions
     # TODO: save transformations
     
 
 def encode_all():
-    
+    A_imgs = []
+    A_predicted_imgs = []
     for batch_idx, (A_data, B_data) in enumerate(eval_loader):
         A_data = Variable(A_data)
         B_data = Variable(B_data)
@@ -497,7 +497,56 @@ def encode_all():
         B2A_encodings = pd.DataFrame(return_dict['B2A_z'].detach().cpu().numpy())
         with open(os.path.join(args.save_dir, 'B2A_encodings.csv'), 'a') as f:
             B2A_encodings.to_csv(f, index=False, header=False)
-
+        
+        # save actual omics data to csv
+        B_data_save = pd.DataFrame(B_data.detach().cpu().numpy())
+        with open(os.path.join(args.save_dir, 'B_data.csv'), 'a') as f:
+            B_data_save.to_csv(f, index=False, header=False)
+        
+        # store actual images to nparray
+        A_imgs.append(A_data.detach().cpu().numpy())
+        
+        # save predicted imaging-omics as csv
+        A2B_pred = pd.DataFrame(return_dict['A2B_pred'].detach().cpu().numpy())
+        with open(os.path.join(args.save_dir, 'A2B_prediction.csv'), 'a') as f:
+            A2B_pred.to_csv(f, index=False, header=False)
+        
+        # store predicted omics-images as numpy arrays
+        B2A_pred = return_dict['B2A_pred'].detach().cpu().numpy()
+        A_predicted_imgs.append(B2A_pred)
+        
+        
+    # save numpy image arrays
+    np.save(os.path.join(args.save_dir, 'A_data.npy'), np.concatenate(A_imgs))
+    np.save(os.path.join(args.save_dir, 'A_pred.npy'), np.concatenate(A_predicted_imgs))
+    
+    # Compute xent of image-to-omics translation
+    # read both true omics and predicted omics
+    
+    B_data_full = torch.tensor(np.array(pd.read_csv(os.path.join(args.save_dir, 
+                                                                 'B_data.csv'),
+                                         header=None)))
+    A2B_pred_full = torch.tensor(np.array(pd.read_csv(os.path.join(args.save_dir, 
+                                                                   'A2B_prediction.csv'),
+                                         header=None)))
+    
+    A2B_xents = [F.binary_cross_entropy(A2B_pred_full[i], B_data_full[i]).item() \
+                 for i in range(len(A2B_pred_full))]
+    
+    pd.DataFrame(A2B_xents).to_csv(os.path.join(args.save_dir, 'A2B_xent.csv'),
+                 header=None, index=False)
+    
+    # compute xent of omics-to-image translation
+    # read both A_data and A_pred
+    A_data_full = torch.tensor(np.concatenate(A_imgs))
+    A_data_pred = torch.tensor(np.concatenate(A_predicted_imgs))
+    
+    B2A_xents = [F.binary_cross_entropy(A_data_pred[i], A_data_full[i]).item() \
+                 for i in range(len(A_data_pred))]
+    
+    pd.DataFrame(B2A_xents).to_csv(os.path.join(args.save_dir, 'B2A_xent.csv'),
+                 header=None, index=False)
+    
 
 if __name__ == "__main__":
     os.makedirs(args.save_dir, exist_ok = True)
@@ -505,8 +554,10 @@ if __name__ == "__main__":
     for epoch in range(1, args.epochs + 1):
         train(epoch, is_final = epoch == args.epochs)
         # TODO: build 'test' function
+        # TODO: shuffle both stacks, rebuild loader
     print('encoding all')
     encode_all()
+    
     
     
     
