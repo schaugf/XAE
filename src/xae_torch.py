@@ -407,13 +407,13 @@ def train(epoch, is_final):
         
         all_losses.append(dict(zip(loss_keys, loss_vals)))
         
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, 
-                batch_idx * len(A_data), 
-                len(train_loader.dataset),
-                100. * batch_idx / len(train_loader),
-                xae_loss.data[0] / len(A_data)))
+#        if batch_idx % args.log_interval == 0:
+#            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+#                epoch, 
+#                batch_idx * len(A_data), 
+#                len(train_loader.dataset),
+#                100. * batch_idx / len(train_loader),
+#                xae_loss.data[0] / len(A_data)))
             
     
     print('====> Epoch: {} Average loss: {:.4f}'.format(
@@ -429,17 +429,17 @@ def train(epoch, is_final):
                          index = False)
     
     # save batch of reconstructions
-    gt_imgs = A_data[:20,0,:].detach().numpy()
+    gt_imgs = A_data[:20,0,:].detach().cpu().numpy()
     gt_stack = np.concatenate(list(gt_imgs))
     
-    img_rec = return_dict['A_rec'][:20,0,:].detach().numpy()
+    img_rec = return_dict['A_rec'][:20,0,:].detach().cpu().numpy()
     rec_stack = np.concatenate(list(img_rec))
     
-    img_cyc_rec = return_dict['A2B2A_rec'][:20,0,:].detach().numpy()
+    img_cyc_rec = return_dict['A2B2A_rec'][:20,0,:].detach().cpu().numpy()
     cyc_rec_stack = np.concatenate(list(img_cyc_rec))
     
     A2B = return_dict['A2B_pred'][:20]
-    A2B_stack = np.concatenate(list(A2B.reshape(8, 28, 28).detach().numpy()))
+    A2B_stack = np.concatenate(list(A2B.reshape(8, 28, 28).detach().cpu().numpy()))
     
     if epoch == 1:
         imgs_to_save = np.concatenate((gt_stack,
@@ -481,20 +481,20 @@ def encode_all():
         return_dict = model(A_data, B_data)
     
         # save encodings
-        A_encodings = pd.DataFrame(return_dict['A_z'].detach().numpy())
+        A_encodings = pd.DataFrame(return_dict['A_z'].detach().cpu().numpy())
         with open(os.path.join(args.save_dir, 'A_encodings.csv'), 'a') as f:
             A_encodings.to_csv(f, index=False, header=False)
         
-        B_encodings = pd.DataFrame(return_dict['B_z'].detach().numpy())
+        B_encodings = pd.DataFrame(return_dict['B_z'].detach().cpu().numpy())
         with open(os.path.join(args.save_dir, 'B_encodings.csv'), 'a') as f:
             B_encodings.to_csv(f, index=False, header=False)
         
         # save cycle-encodings
-        A2B_encodings = pd.DataFrame(return_dict['A2B_z'].detach().numpy())
+        A2B_encodings = pd.DataFrame(return_dict['A2B_z'].detach().cpu().numpy())
         with open(os.path.join(args.save_dir, 'A2B_encodings.csv'), 'a') as f:
             A2B_encodings.to_csv(f, index=False, header=False)
         
-        B2A_encodings = pd.DataFrame(return_dict['B2A_z'].detach().numpy())
+        B2A_encodings = pd.DataFrame(return_dict['B2A_z'].detach().cpu().numpy())
         with open(os.path.join(args.save_dir, 'B2A_encodings.csv'), 'a') as f:
             B2A_encodings.to_csv(f, index=False, header=False)
 
