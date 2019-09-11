@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from torch.nn import functional as F
 from torchvision import datasets, transforms
 from torchvision.utils import save_image
-from torchsummary import summary
+#from torchsummary import summary
 
 
 parser = argparse.ArgumentParser(description='XAE Model')
@@ -78,6 +78,10 @@ train_loader =  torch.utils.data.DataLoader(train,
                                             batch_size = args.batch_size, 
                                             shuffle = True)
 
+eval_loader = torch.utils.data.DataLoader(train, 
+                                          batch_size = args.batch_size, 
+                                          shuffle = False)
+
 test = torch.utils.data.TensorDataset(test_img, test_ome)
 test_loader =  torch.utils.data.DataLoader(test, 
                                            batch_size = args.batch_size, 
@@ -94,7 +98,6 @@ B_shape = train_ome.shape[1:]
 
 
 
-#
 #def AddDomainCorruption(self):
 #        ''' append domain-specific corruption '''
 #    
@@ -341,7 +344,7 @@ def mutual_encoding_loss(z1, z2):
     return MED
     
 
-def train(epoch):
+def train(epoch, is_final):
     model.train()
     loss_keys = ['A_vae_loss',
                  'B_vae_loss',
@@ -460,39 +463,50 @@ def train(epoch):
     to_save.save(os.path.join(args.save_dir, 'image_reconstructions.png'))
     
 
-def encode_all():
-    print('encoding all')
-    return_dict = model(train_img, train_ome)
-    
-    # save encodings
-    A_encodings = pd.DataFrame(return_dict['A_z'].detach().numpy())
-    A_encodings.to_csv(os.path.join(args.save_dir, 'A_encodings.csv'), 
-                       index=False)
-    B_encodings = pd.DataFrame(return_dict['B_z'].detach().numpy())
-    B_encodings.to_csv(os.path.join(args.save_dir, 'B_encodings.csv'),
-                       index=False)
-    
-    # save cycle-encodings
-    A2B_encodings = pd.DataFrame(return_dict['A2B_z'].detach().numpy())
-    A2B_encodings.to_csv(os.path.join(args.save_dir, 'A2B_encodings.csv'), 
-                         index=False)
-    B2A_encodings = pd.DataFrame(return_dict['B2A_z'].detach().numpy())
-    B2A_encodings.to_csv(os.path.join(args.save_dir, 'B2A_encodings.csv'), 
-                         index=False)
-    
     # TODO: save VAE reconstructions
     # TODO: save cycle reconstructions
     # TODO: save transformations
     
 
+def encode_all():
+    
+    for batch_idx, (A_data, B_data) in enumerate(eval_loader):
+        A_data = Variable(A_data)
+        B_data = Variable(B_data)
+        
+        if args.cuda:
+            A_data = A_data.cuda()
+            B_data = B_data.cuda()
+            
+        return_dict = model(A_data, B_data)
+    
+        # save encodings
+        A_encodings = pd.DataFrame(return_dict['A_z'].detach().numpy())
+        with open(os.path.join(args.save_dir, 'A_encodings.csv'), 'a') as f:
+            A_encodings.to_csv(f, index=False, header=False)
+        
+        B_encodings = pd.DataFrame(return_dict['B_z'].detach().numpy())
+        with open(os.path.join(args.save_dir, 'B_encodings.csv'), 'a') as f:
+            B_encodings.to_csv(f, index=False, header=False)
+        
+        # save cycle-encodings
+        A2B_encodings = pd.DataFrame(return_dict['A2B_z'].detach().numpy())
+        with open(os.path.join(args.save_dir, 'A2B_encodings.csv'), 'a') as f:
+            A2B_encodings.to_csv(f, index=False, header=False)
+        
+        B2A_encodings = pd.DataFrame(return_dict['B2A_z'].detach().numpy())
+        with open(os.path.join(args.save_dir, 'B2A_encodings.csv'), 'a') as f:
+            B2A_encodings.to_csv(f, index=False, header=False)
+
+
 if __name__ == "__main__":
     os.makedirs(args.save_dir, exist_ok = True)
     
     for epoch in range(1, args.epochs + 1):
-        train(epoch)
+        train(epoch, is_final = epoch == args.epochs)
         # TODO: build 'test' function
+    print('encoding all')
     encode_all()
-    
     
     
     
