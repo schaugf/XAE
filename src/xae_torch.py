@@ -10,6 +10,7 @@ import torch.utils.data
 from torch import nn, optim
 from torch.autograd import Variable
 from torch.nn import functional as F
+from torch.nn import init
 from torchvision import datasets, transforms
 #from torchsummary import summary
 
@@ -17,6 +18,10 @@ from torchvision import datasets, transforms
 parser = argparse.ArgumentParser(description='XAE Model')
 parser.add_argument('--batch_size', type=int, default=12, metavar='N',
                     help='input batch size for training (default: 12)')
+parser.add_argument('--added_noise', type=float, default=0.2, metavar='N',
+                    help='fraction of noise added to input')
+parser.add_argument('--do_gate_layer', type=int, default=1, metavar='N',
+                    help='append weighted gate layer to input?')
 parser.add_argument('--lr', type=float, default=1e-3, metavar='N',
                     help='optimizer learning rate (default: 1e-3)')
 parser.add_argument('--epochs', type=int, default=5, metavar='N',
@@ -29,12 +34,10 @@ parser.add_argument('--dataset', type=str, default='test', metavar='N',
                     help='dataset to load (mnist or test)')
 parser.add_argument('--save_dir', type=str, default='../results/test', 
                     metavar='N', help='save directory')
-
 parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='enables CUDA training')
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
-
 parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging status')
 args = parser.parse_args()
@@ -47,6 +50,8 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
 kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+os.makedirs(args.save_dir, exist_ok = True)
+
 
 # load train and test
 train_mnist = datasets.MNIST('../data', 
@@ -61,6 +66,11 @@ test_mnist = datasets.MNIST('../data',
 
 train_img = train_mnist.train_data.unsqueeze(1).float()/255
 train_ome = train_img.reshape((len(train_img), -1))
+train_labels = train_mnist.train_labels
+
+# save labels
+pd.DataFrame(train_labels.numpy()).to_csv(os.path.join(args.save_dir,
+            'train_labels.csv'),header=None, index=False)
 
 test_img = test_mnist.test_data.unsqueeze(1).float()/255
 test_ome = test_img.reshape((len(test_img), -1))
@@ -71,66 +81,106 @@ if args.dataset == 'test':
     test_img = test_img[:200]
     test_ome = test_ome[:200]
 
-train = torch.utils.data.TensorDataset(train_img.float(), train_ome.float())
+# define initial dimensions
+A_type = 'img'
+B_type = 'ome'
+A_init_dim = train_img.shape[1:]
+B_init_dim = train_ome.shape[1:]
 
+print('corrupting omics domain')
+n_samples_to_add = int(train_ome.shape[1] * 
+                       args.added_noise /
+                       (1 - args.added_noise))
+
+train_shape_to_add = (train_ome.shape[0], n_samples_to_add)
+test_shape_to_add = (test_ome.shape[0], n_samples_to_add)
+
+sample_space = np.reshape(train_ome, -1)
+
+train_samples = np.random.choice(sample_space, 
+                                 np.prod(train_shape_to_add))
+
+test_samples = np.random.choice(sample_space, 
+                                np.prod(test_shape_to_add))
+
+train_samples = np.reshape(train_samples, train_shape_to_add)
+test_samples = np.reshape(test_samples, test_shape_to_add)
+
+train_ome = np.concatenate((train_ome, train_samples), 
+                                axis = 1)
+
+test_ome = np.concatenate((test_ome, test_samples), 
+                          axis = 1)
+
+print('corrupted omic train shape', train_ome.shape)
+print('corrupted omic test shape', test_ome.shape)
+        
+# define datasets
+train = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
+                                       torch.tensor(train_ome).float())
+
+eval_set = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
+                                          torch.tensor(train_ome).float())
+test = torch.utils.data.TensorDataset(torch.tensor(test_img).float(), 
+                                      torch.tensor(test_ome).float())
+
+# set data parameters
+A_shape = train_img.shape[1:]
+B_shape = train_ome.shape[1:]
+
+print('A_shape:', A_shape, 'B_shape', B_shape)
+
+# Define data loaders
 train_loader =  torch.utils.data.DataLoader(train, 
                                             batch_size = args.batch_size, 
                                             shuffle = True)
 
-eval_loader = torch.utils.data.DataLoader(train, 
+eval_loader = torch.utils.data.DataLoader(eval_set, 
                                           batch_size = args.batch_size, 
                                           shuffle = False)
 
-test = torch.utils.data.TensorDataset(test_img, test_ome)
 test_loader =  torch.utils.data.DataLoader(test, 
                                            batch_size = args.batch_size, 
                                            shuffle = False)
 
-# TODO: add domain corruption
-# TODO: save original omic domain shape (length)
 
-# set data parameters
-A_type = 'img'
-B_type = 'ome'
-A_shape = train_img.shape[1:]
-B_shape = train_ome.shape[1:]
-
-
-
-#def AddDomainCorruption(self):
-#        ''' append domain-specific corruption '''
-#    
-#        print('corrupting omics domain')
-#        n_samples_to_add = int(self.ome_train.shape[1] * 
-#                               self.test_rand_add /
-#                               (1 - self.test_rand_add))
-#        
-#        train_shape_to_add = (self.ome_train.shape[0], n_samples_to_add)
-#        test_shape_to_add = (self.ome_test.shape[0], n_samples_to_add)
-#        
-#        sample_space = np.reshape(self.ome_train, -1)
-#
-#        train_samples = np.random.choice(sample_space, 
-#                                         np.prod(train_shape_to_add))
-#        
-#        test_samples = np.random.choice(sample_space, 
-#                                        np.prod(test_shape_to_add))
-#        
-#        train_samples = np.reshape(train_samples, train_shape_to_add)
-#        test_samples = np.reshape(test_samples, test_shape_to_add)
-#    
-#        self.ome_train = np.concatenate((self.ome_train, train_samples), 
-#                                        axis = 1)
-#        
-#        self.ome_test = np.concatenate((self.ome_test, test_samples), 
-#                                        axis = 1)
-#        
-#        print('corrupted omic train shape', self.ome_train.shape)
-#        print('corrupted omic test shape', self.ome_test.shape)
+class Flatten(nn.Module):
+        def __init__(self):
+            super(Flatten, self).__init__()
+            
+        def forward(self, x):
+            return x.view(x.size()[0], -1)
         
+        
+class Rachet(nn.Module):
+    def __init__(self, out_shape):
+        super(Rachet, self).__init__()
+        self.out_shape = out_shape
+        
+    def forward(self, x):
+        return x.view(x.size(0), 8, self.out_shape[1], self.out_shape[2])
+    
 
+class GateLayer(nn.Module):
+    def __init__(self, in_shape):
+        super(GateLayer, self).__init__()
+        self.in_shape = in_shape
+        self.weight = nn.Parameter(torch.Tensor(1, in_shape))
+        init.kaiming_uniform_(self.weight)
 
-# define shared XAE layer
+    def forward(self, x):
+        return x * self.weight
+    
+    
+class BinaryGate(nn.Module):
+    def __init__(self, in_shape):
+        super(BinaryGate, self).__init__()
+        self.binary_layer = torch.tensor(np.ones(in_shape))
+    
+    def forward(self, x):
+        return x * self.binary_layer
+    
+
 class XAE(nn.Module):
     def __init__(self, 
                  A_type = 'img', 
@@ -148,9 +198,7 @@ class XAE(nn.Module):
         self.B_shape = B_shape
         self.latent_dim = latent_dim
         self.inter_dim = inter_dim
-        
-        # TODO: implement PWGL
-        
+                
         # shared latent feature layers
         self.shared_fc1 = nn.Linear(self.inter_dim, self.latent_dim)
         self.shared_fc2 = nn.Linear(self.inter_dim, self.latent_dim)
@@ -171,23 +219,10 @@ class XAE(nn.Module):
         elif self.B_type == 'ome':
             self.B_encoder = self.make_omic_encoder(in_shape = B_shape)
             self.B_decoder = self.make_omic_decoder(out_shape = B_shape)
-     
-        
-    class Flatten(nn.Module):
-        def forward(self, x):
-            return x.view(x.size()[0], -1)
-        
-        
-    class Rachet(nn.Module):
-        def __init__(self, out_shape):
-            super().__init__()
-            self.out_shape = out_shape
-            
-        def forward(self, x):
-            return x.view(x.size(0), 8, self.out_shape[1], self.out_shape[2])
-
+    
 
     def make_image_encoder(self, in_shape):
+        
         # need: number of input channels, image size
         img_encoder = nn.Sequential(
                 nn.Conv2d(1, 64, kernel_size=3, stride=2, padding=1),
@@ -198,7 +233,7 @@ class XAE(nn.Module):
                 nn.ReLU(),
                 nn.Conv2d(16, 8, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
-                self.Flatten(),
+                Flatten(),
                 nn.Linear(32, self.inter_dim),
                 nn.ReLU()
                 )
@@ -213,7 +248,7 @@ class XAE(nn.Module):
                 nn.ReLU(),
                 nn.Linear(self.inter_dim, 8*np.prod(out_shape[1:])),
                 nn.ReLU(),
-                self.Rachet(out_shape),
+                Rachet(out_shape),
                 nn.ConvTranspose2d(8, 16, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 nn.ConvTranspose2d(16, 32, kernel_size=3, stride=1, padding=1),
@@ -229,13 +264,23 @@ class XAE(nn.Module):
     
     def make_omic_encoder(self, in_shape):
         
-        # TODO: implement gate layer
-        ome_encoder = nn.Sequential(
+        if args.do_gate_layer:
+            print('gating input')
+            ome_encoder = nn.Sequential(
+                GateLayer(in_shape[0]),
+                nn.Tanh(),
                 nn.Linear(in_shape[0], self.inter_dim*8),
                 nn.ReLU(),
                 nn.Linear(self.inter_dim*8, self.inter_dim),
                 nn.ReLU()
                 )
+        else:
+            ome_encoder = nn.Sequential(
+                    nn.Linear(in_shape[0], self.inter_dim*8),
+                    nn.ReLU(),
+                    nn.Linear(self.inter_dim*8, self.inter_dim),
+                    nn.ReLU()
+                    )
         
         return ome_encoder
         
@@ -254,6 +299,7 @@ class XAE(nn.Module):
         
 
     def reparameterize(self, mu, logvar):
+        
         std = torch.exp(0.5*logvar)
         eps = torch.randn_like(std)
         return mu + eps*std
@@ -313,9 +359,6 @@ model = XAE(A_type = 'img',
             B_type = 'ome',
             A_shape = A_shape,
             B_shape = B_shape)
-
-#summary(model, input_size=[A_shape, B_shape])
-
 
 if args.cuda:
     model.cuda()
@@ -405,14 +448,6 @@ def train(epoch, is_final):
                      B_med_loss.item()]
         
         all_losses.append(dict(zip(loss_keys, loss_vals)))
-        
-#        if batch_idx % args.log_interval == 0:
-#            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-#                epoch, 
-#                batch_idx * len(A_data), 
-#                len(train_loader.dataset),
-#                100. * batch_idx / len(train_loader),
-#                xae_loss.data[0] / len(A_data)))
             
     
     print('====> Epoch: {} Average loss: {:.4f}'.format(
@@ -428,18 +463,19 @@ def train(epoch, is_final):
                          index = False)
     
     # save batch of reconstructions
-    gt_imgs = A_data[:20,0,:].detach().cpu().numpy()
+    nrec = 8
+    gt_imgs = A_data[:nrec,0,:].detach().cpu().numpy()
     gt_stack = np.concatenate(list(gt_imgs))
     
-    img_rec = return_dict['A_rec'][:20,0,:].detach().cpu().numpy()
+    img_rec = return_dict['A_rec'][:nrec,0,:].detach().cpu().numpy()
     rec_stack = np.concatenate(list(img_rec))
     
-    img_cyc_rec = return_dict['A2B2A_rec'][:20,0,:].detach().cpu().numpy()
+    img_cyc_rec = return_dict['A2B2A_rec'][:nrec,0,:].detach().cpu().numpy()
     cyc_rec_stack = np.concatenate(list(img_cyc_rec))
     
-    # TODO: filter out noisy samples so always 28x28
-    A2B = return_dict['A2B_pred'][:20]
-    A2B_stack = np.concatenate(list(A2B.reshape(20, 28, 28).detach().cpu().numpy()))
+    # filter out added noise for reconstructions
+    A2B = return_dict['A2B_pred'][:nrec, :B_init_dim[0]]
+    A2B_stack = np.concatenate(list(A2B.reshape(nrec, 28, 28).detach().cpu().numpy()))
     
     if epoch == 1:
         imgs_to_save = np.concatenate((gt_stack,
@@ -522,7 +558,6 @@ def encode_all():
     
     # Compute xent of image-to-omics translation
     # read both true omics and predicted omics
-    
     B_data_full = torch.tensor(np.array(pd.read_csv(os.path.join(args.save_dir, 
                                                                  'B_data.csv'),
                                          header=None)))
@@ -545,21 +580,35 @@ def encode_all():
                  for i in range(len(A_data_pred))]
     
     pd.DataFrame(B2A_xents).to_csv(os.path.join(args.save_dir, 'B2A_xent.csv'),
-                 header=None, index=False)
+                 header=None, index=False)    
     
+    # save gate weights
+    if args.do_gate_layer:
+        gate_weights = model.B_encoder[0].weight
+        pd.DataFrame(gate_weights.detach().cpu().numpy()).T.to_csv(
+                os.path.join(args.save_dir, 
+                             'gate_weights.csv'))
+        
+        # save gate weight image
+        g = gate_weights.detach().cpu().numpy()[0]
+        nrm = np.mod(len(g), train_img.shape[2])
+        if nrm != 0:
+            g = g[:-nrm]
+        g = g.reshape(-1, train_img.shape[2])
+        g = g / g.max()
+        g = g ** 2
+        mx = (g*255).astype(np.uint8)
+        
+        Image.fromarray(mx).save(os.path.join(args.save_dir, 'gate_2d.jpg'))
+        #Image.fromarray(mx).show()
 
-if __name__ == "__main__":
-    os.makedirs(args.save_dir, exist_ok = True)
-    
+        
+        
+if __name__ == "__main__":    
     for epoch in range(1, args.epochs + 1):
         train(epoch, is_final = epoch == args.epochs)
-        # TODO: build 'test' function
+        # TODO: build test function
         # TODO: shuffle both stacks, rebuild loader
     print('encoding all')
     encode_all()
     
-    
-    
-    
-    
-
