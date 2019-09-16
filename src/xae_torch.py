@@ -24,6 +24,8 @@ parser.add_argument('--do_gate_layer', type=int, default=1, metavar='N',
                     help='append weighted gate layer to input?')
 parser.add_argument('--do_gate_recon', type=int, default=1, metavar='N',
                     help='gate reconstruction?')
+parser.add_argument('--gate_recon_lambda', type=int, default=250, metavar='N',
+                    help='weight gate reconstruction term')
 parser.add_argument('--lr', type=float, default=1e-3, metavar='N',
                     help='optimizer learning rate (default: 1e-3)')
 parser.add_argument('--epochs', type=int, default=5, metavar='N',
@@ -421,9 +423,9 @@ def train(epoch, is_final):
         A_cycle_loss = cycle_loss(recon_x = return_dict['A2B2A_rec'],
                                   x = A_data)
         
-        # TODO: view B_data/recon w/ and w/o W
         if args.do_gate_recon:
             Wtanh2 = model.B_encoder[0].weight.detach().tanh()**2
+            
             B_cycle_loss = cycle_loss(recon_x = return_dict['B2A2B_rec'] * Wtanh2,
                                       x = B_data * Wtanh2)
             
@@ -431,6 +433,10 @@ def train(epoch, is_final):
                               x = B_data * Wtanh2, 
                               mu = return_dict['B_mu'], 
                               logvar = return_dict['B_logvar'])
+            
+            # weight gated recon terms
+            B_cycle_loss = B_cycle_loss * args.gate_recon_lambda
+            B_vae_loss = B_vae_loss * args.gate_recon_lambda
             
         else:
            B_cycle_loss = cycle_loss(recon_x = return_dict['B2A2B_rec'],
@@ -440,10 +446,6 @@ def train(epoch, is_final):
                   x = B_data, 
                   mu = return_dict['B_mu'], 
                   logvar = return_dict['B_logvar'])
-                     
-        
-        
-        
         
         A_med_loss = mutual_encoding_loss(z1 = return_dict['A_z'], 
                                           z2 = return_dict['A2B_z'])
@@ -451,9 +453,6 @@ def train(epoch, is_final):
         B_med_loss = mutual_encoding_loss(z1 = return_dict['B_z'], 
                                           z2 = return_dict['B2A_z'])
                 
-        
-        
-        
         xae_loss = A_vae_loss + B_vae_loss + \
                    A_cycle_loss + B_cycle_loss + \
                    A_med_loss + B_med_loss
