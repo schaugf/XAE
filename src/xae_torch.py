@@ -64,8 +64,6 @@ parser.add_argument('--log-interval', type=int, default=10, metavar='N',
 args = parser.parse_args()
 
                    
-                   
-
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
 torch.manual_seed(args.seed)
@@ -137,33 +135,6 @@ print('corrupted omic train shape', train_ome.shape)
 print('corrupted omic test shape', test_ome.shape)
         
 # define datasets
-train = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
-                                       torch.tensor(train_ome).float())
-
-eval_set = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
-                                          torch.tensor(train_ome).float())
-
-test = torch.utils.data.TensorDataset(torch.tensor(test_img).float(), 
-                                      torch.tensor(test_ome).float())
-
-# set data parameters
-A_shape = train_img.shape[1:]
-B_shape = train_ome.shape[1:]
-
-print('A_shape:', A_shape, 'B_shape', B_shape)
-
-# Define data loaders
-train_loader =  torch.utils.data.DataLoader(train, 
-                                            batch_size = args.batch_size, 
-                                            shuffle = True)
-
-eval_loader = torch.utils.data.DataLoader(eval_set, 
-                                          batch_size = args.batch_size, 
-                                          shuffle = False)
-
-test_loader =  torch.utils.data.DataLoader(test, 
-                                           batch_size = args.batch_size, 
-                                           shuffle = False)
 
 
 class Flatten(nn.Module):
@@ -646,17 +617,20 @@ def encode_all():
         Image.fromarray(mx).save(os.path.join(args.save_dir, 'gate_2d.jpg'))
         #Image.fromarray(mx).show()
 
-        
+
+
+train_t = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
+                                         torch.tensor(train_ome).float())
+
+train_loader =  torch.utils.data.DataLoader(train_t, 
+                                            batch_size = args.batch_size, 
+                                            shuffle = True)
 if __name__ == "__main__":    
     for epoch in range(1, args.epochs + 1):
-        shuffle(train_img)
-        shuffle(train_ome)
-        train_t = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
-                                                 torch.tensor(train_ome).float())
+        # TODO: shuffle tensor/array in better way
+        #shuffle(train_img)
+        #shuffle(train_ome)
         
-        train_loader =  torch.utils.data.DataLoader(train_t, 
-                                                    batch_size = args.batch_size, 
-                                                    shuffle = True)
         train(epoch, is_final = epoch == args.epochs)
         
         # TODO: program binary layer
