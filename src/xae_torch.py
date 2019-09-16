@@ -1,6 +1,7 @@
 from __future__ import print_function
 import os
 import argparse
+from random import shuffle
 from PIL import Image
 import numpy as np
 import pandas as pd
@@ -26,6 +27,24 @@ parser.add_argument('--do_gate_recon', type=int, default=1, metavar='N',
                     help='gate reconstruction?')
 parser.add_argument('--gate_recon_lambda', type=int, default=250, metavar='N',
                     help='weight gate reconstruction term')
+parser.add_argument('--do_vae_loss', type=int, default=1, metavar='N',
+                    help='include vae loss term')
+parser.add_argument('--A_vae_lambda', type=float, default=1.0, metavar='N',
+                    help='A vae loss coefficient')
+parser.add_argument('--A_cycle_lambda', type=float, default=1.0, metavar='N',
+                    help='A cycle loss coefficient')
+parser.add_argument('--A_med_lambda', type=float, default=1.0, metavar='N',
+                    help='A mes loss coefficient')
+
+parser.add_argument('--B_vae_lambda', type=float, default=1.0, metavar='N',
+                    help='B vae loss coefficient')
+parser.add_argument('--B_cycle_lambda', type=float, default=1.0, metavar='N',
+                    help='B cycle loss coefficient')
+parser.add_argument('--B_med_lambda', type=float, default=1.0, metavar='N',
+                    help='B med loss coefficient')
+
+parser.add_argument('--n_epoch_set_binary', type=int, default=20, metavar='N',
+                    help='how often to set binary gate layer')
 parser.add_argument('--lr', type=float, default=1e-3, metavar='N',
                     help='optimizer learning rate (default: 1e-3)')
 parser.add_argument('--epochs', type=int, default=5, metavar='N',
@@ -46,6 +65,8 @@ parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging status')
 args = parser.parse_args()
 
+                   
+                   
 
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -176,6 +197,7 @@ class GateLayer(nn.Module):
     
     
 class BinaryGate(nn.Module):
+    # TODO: set non-trainable
     def __init__(self, in_shape):
         super(BinaryGate, self).__init__()
         self.binary_layer = torch.tensor(np.ones(in_shape))
@@ -384,13 +406,25 @@ def cycle_loss(recon_x, x):
     return CC
 
 
+def vce_loss(recon_x, x, mu, logvar):
+    # variational cyclic encoder
+    # cycle consistency loss with KL divergence
+    CC = F.binary_cross_entropy(recon_x.view(-1, np.prod(recon_x.shape[1:])), 
+                                x.view(-1, np.prod(x.shape[1:])),
+                                reduction = 'sum')
+    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return CC + KLD
+    
+
 def mutual_encoding_loss(z1, z2):
+    # encoding divergence between omics and imaging domains
     MED = F.mse_loss(z1, z2) * len(z1)
     return MED
     
 
 def train(epoch, is_final):
     model.train()
+    # TODO: define this in main loop
     loss_keys = ['A_vae_loss',
                  'B_vae_loss',
                  'A_cycle_loss',
@@ -401,7 +435,7 @@ def train(epoch, is_final):
     all_losses = []
 
     for batch_idx, (A_data, B_data) in enumerate(train_loader):
-        #A_data, B_data = next(iter(train_loader))
+        #A_data, B_data = next(iter(train_loader))  # for debugging
         A_data = Variable(A_data)
         B_data = Variable(B_data)
         
@@ -452,14 +486,19 @@ def train(epoch, is_final):
         
         B_med_loss = mutual_encoding_loss(z1 = return_dict['B_z'], 
                                           z2 = return_dict['B2A_z'])
-                
-        xae_loss = A_vae_loss + B_vae_loss + \
-                   A_cycle_loss + B_cycle_loss + \
-                   A_med_loss + B_med_loss
+        
+        # check do_vae_loss
+        xae_loss = args.A_vae_lambda * A_vae_loss + \
+                   args.B_vae_lambda * B_vae_loss + \
+                   args.A_cycle_lambda * A_cycle_loss + \
+                   args.B_cycle_lambda * B_cycle_loss + \
+                   args.A_med_lambda * A_med_loss + \
+                   args.B_med_lambda * B_med_loss
                    
         xae_loss.backward()
         optimizer.step()
         
+        # TODO: if do_vae_loss, remove from storage
         loss_vals = [A_vae_loss.item(),
                      B_vae_loss.item(),
                      A_cycle_loss.item(),
@@ -469,7 +508,6 @@ def train(epoch, is_final):
         
         all_losses.append(dict(zip(loss_keys, loss_vals)))
             
-    
     print('====> Epoch: {} Average loss: {:.4f}'.format(
           epoch, xae_loss / len(train_loader.dataset)))
 
@@ -514,6 +552,17 @@ def train(epoch, is_final):
                                        A2B_stack,
                                        cyc_rec_stack,
                                        np.ones((gt_stack.shape[0], 1))), axis=1)
+    
+    # TODO: set binary layer
+    if epoch % args.n_epoch_set_binary:
+        gate_weights = model.B_encoder[0].weight.detach()
+        gwpd = pd.DataFrame({'gate_weights':gate_weights.numpy()[0]})
+        gwpd['gate_weights_squared'] = gwpd['gate_weights'] ** 2 
+        gwpd['gate_weights_tanh'] = np.tanh(gwpd['gate_weights'])
+        #gwpd['is_noise']
+        # compute .95 quantile for noise weights
+        # set binary layer
+        
     
     to_save = Image.fromarray((255*imgs_to_save).astype(np.uint8))
     to_save.save(os.path.join(args.save_dir, 'image_reconstructions.png'))
@@ -572,8 +621,7 @@ def encode_all():
     np.save(os.path.join(args.save_dir, 'A_data.npy'), np.concatenate(A_imgs))
     np.save(os.path.join(args.save_dir, 'A_pred.npy'), np.concatenate(A_predicted_imgs))
     
-    # Compute xent of image-to-omics translation
-    # read both true omics and predicted omics
+    # Compute xent of image-to-omics translation, read both true omics and predicted omics
     B_data_full = torch.tensor(np.array(pd.read_csv(os.path.join(args.save_dir, 
                                                                  'B_data.csv'),
                                          header=None)))
@@ -587,8 +635,7 @@ def encode_all():
     pd.DataFrame(A2B_xents).to_csv(os.path.join(args.save_dir, 'A2B_xent.csv'),
                  header=None, index=False)
     
-    # compute xent of omics-to-image translation
-    # read both A_data and A_pred
+    # compute xent of omics-to-image translation, read both A_data and A_pred
     A_data_full = torch.tensor(np.concatenate(A_imgs))
     A_data_pred = torch.tensor(np.concatenate(A_predicted_imgs))
     
@@ -621,6 +668,8 @@ def encode_all():
         
 if __name__ == "__main__":    
     for epoch in range(1, args.epochs + 1):
+        shuffle(train_img)
+        shuffle(train_ome)
         train_t = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
                                                  torch.tensor(train_ome).float())
         # Define data loaders
@@ -629,17 +678,10 @@ if __name__ == "__main__":
                                                 shuffle = True)
 
         train(epoch, is_final = epoch == args.epochs)
-        # TODO: lambda on med
         # TODO: program binary layer
         # TODO: test w/ and w/o vae loss
-        # TODO: build test function
-        # TODO: shuffle both stacks, rebuild loader
-        
+        # TODO: build test function  
         
     print('encoding all')
     encode_all()
     
-
-
-
-
