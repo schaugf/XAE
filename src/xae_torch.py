@@ -22,6 +22,8 @@ parser.add_argument('--added_noise', type=float, default=0.2, metavar='N',
                     help='fraction of noise added to input')
 parser.add_argument('--do_gate_layer', type=int, default=1, metavar='N',
                     help='append weighted gate layer to input?')
+parser.add_argument('--do_gate_recon', type=int, default=1, metavar='N',
+                    help='gate reconstruction?')
 parser.add_argument('--lr', type=float, default=1e-3, metavar='N',
                     help='optimizer learning rate (default: 1e-3)')
 parser.add_argument('--epochs', type=int, default=5, metavar='N',
@@ -106,11 +108,9 @@ test_samples = np.random.choice(sample_space,
 train_samples = np.reshape(train_samples, train_shape_to_add)
 test_samples = np.reshape(test_samples, test_shape_to_add)
 
-train_ome = np.concatenate((train_ome, train_samples), 
-                                axis = 1)
+train_ome = np.concatenate((train_ome, train_samples), axis = 1)
 
-test_ome = np.concatenate((test_ome, test_samples), 
-                          axis = 1)
+test_ome = np.concatenate((test_ome, test_samples), axis = 1)
 
 print('corrupted omic train shape', train_ome.shape)
 print('corrupted omic test shape', test_ome.shape)
@@ -121,6 +121,7 @@ train = torch.utils.data.TensorDataset(torch.tensor(train_img).float(),
 
 eval_set = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
                                           torch.tensor(train_ome).float())
+
 test = torch.utils.data.TensorDataset(torch.tensor(test_img).float(), 
                                       torch.tensor(test_ome).float())
 
@@ -398,6 +399,7 @@ def train(epoch, is_final):
     all_losses = []
 
     for batch_idx, (A_data, B_data) in enumerate(train_loader):
+        #A_data, B_data = next(iter(train_loader))
         A_data = Variable(A_data)
         B_data = Variable(B_data)
         
@@ -407,24 +409,41 @@ def train(epoch, is_final):
             
         optimizer.zero_grad()
         
-        # pass through the model
         return_dict = model(A_data, B_data)
         
+        # compute losses
+        # TODO: set "do_vae_loss" flag
         A_vae_loss = vae_loss(recon_x = return_dict['A_rec'], 
                               x = A_data, 
                               mu = return_dict['A_mu'], 
                               logvar = return_dict['A_logvar'])
         
-        B_vae_loss = vae_loss(recon_x = return_dict['B_rec'], 
-                              x = B_data, 
-                              mu = return_dict['B_mu'], 
-                              logvar = return_dict['B_logvar'])
-        
         A_cycle_loss = cycle_loss(recon_x = return_dict['A2B2A_rec'],
                                   x = A_data)
         
-        B_cycle_loss = cycle_loss(recon_x = return_dict['B2A2B_rec'],
-                                  x = B_data)
+        # TODO: view B_data/recon w/ and w/o W
+        if args.do_gate_recon:
+            Wtanh2 = model.B_encoder[0].weight.detach().tanh()**2
+            B_cycle_loss = cycle_loss(recon_x = return_dict['B2A2B_rec'] * Wtanh2,
+                                      x = B_data * Wtanh2)
+            
+            B_vae_loss = vae_loss(recon_x = return_dict['B_rec'] * Wtanh2, 
+                              x = B_data * Wtanh2, 
+                              mu = return_dict['B_mu'], 
+                              logvar = return_dict['B_logvar'])
+            
+        else:
+           B_cycle_loss = cycle_loss(recon_x = return_dict['B2A2B_rec'],
+                                      x = B_data)
+           
+           B_vae_loss = vae_loss(recon_x = return_dict['B_rec'], 
+                  x = B_data, 
+                  mu = return_dict['B_mu'], 
+                  logvar = return_dict['B_logvar'])
+                     
+        
+        
+        
         
         A_med_loss = mutual_encoding_loss(z1 = return_dict['A_z'], 
                                           z2 = return_dict['A2B_z'])
@@ -432,6 +451,8 @@ def train(epoch, is_final):
         B_med_loss = mutual_encoding_loss(z1 = return_dict['B_z'], 
                                           z2 = return_dict['B2A_z'])
                 
+        
+        
         
         xae_loss = A_vae_loss + B_vae_loss + \
                    A_cycle_loss + B_cycle_loss + \
@@ -497,11 +518,7 @@ def train(epoch, is_final):
     
     to_save = Image.fromarray((255*imgs_to_save).astype(np.uint8))
     to_save.save(os.path.join(args.save_dir, 'image_reconstructions.png'))
-    
-    # TODO: save VAE reconstructions
-    # TODO: save cycle reconstructions
-    # TODO: save transformations
-    
+        
 
 def encode_all():
     A_imgs = []
@@ -603,12 +620,27 @@ def encode_all():
         #Image.fromarray(mx).show()
 
         
-        
 if __name__ == "__main__":    
     for epoch in range(1, args.epochs + 1):
+        train_t = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
+                                                 torch.tensor(train_ome).float())
+        # Define data loaders
+        train_loader =  torch.utils.data.DataLoader(train_t, 
+                                                batch_size = args.batch_size, 
+                                                shuffle = True)
+
         train(epoch, is_final = epoch == args.epochs)
+        # TODO: lambda on med
+        # TODO: program binary layer
+        # TODO: test w/ and w/o vae loss
         # TODO: build test function
         # TODO: shuffle both stacks, rebuild loader
+        
+        
     print('encoding all')
     encode_all()
     
+
+
+
+
