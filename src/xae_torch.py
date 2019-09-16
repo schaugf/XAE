@@ -135,6 +135,8 @@ print('corrupted omic train shape', train_ome.shape)
 print('corrupted omic test shape', test_ome.shape)
         
 # define datasets
+A_shape = train_img.shape[1:]
+B_shape = train_ome.shape[1:]
 
 
 class Flatten(nn.Module):
@@ -618,13 +620,17 @@ def encode_all():
         #Image.fromarray(mx).show()
 
 
-
 train_t = torch.utils.data.TensorDataset(torch.tensor(train_img).float(), 
                                          torch.tensor(train_ome).float())
 
-train_loader =  torch.utils.data.DataLoader(train_t, 
+train_loader = torch.utils.data.DataLoader(train_t, 
                                             batch_size = args.batch_size, 
                                             shuffle = True)
+
+eval_loader = torch.utils.data.DataLoader(train_t, 
+                                          batch_size = args.batch_size, 
+                                          shuffle = False)
+
 if __name__ == "__main__":    
     for epoch in range(1, args.epochs + 1):
         # TODO: shuffle tensor/array in better way
