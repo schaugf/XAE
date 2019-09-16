@@ -555,7 +555,7 @@ def train(epoch, is_final):
     
     # TODO: set binary layer
     if epoch % args.n_epoch_set_binary:
-        gate_weights = model.B_encoder[0].weight.detach()
+        gate_weights = model.B_encoder[0].weight.detach().cpu()
         gwpd = pd.DataFrame({'gate_weights':gate_weights.numpy()[0]})
         gwpd['gate_weights_squared'] = gwpd['gate_weights'] ** 2 
         gwpd['gate_weights_tanh'] = np.tanh(gwpd['gate_weights'])
