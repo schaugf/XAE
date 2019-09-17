@@ -35,8 +35,13 @@ parser.add_argument('--B_med_lambda', type=float, default=10.0, metavar='N',
                     help='B med loss coefficient')
 
 parser.add_argument('--A_vce_lambda', type=float, default=1.0, metavar='N',
-                    help='A mes loss coefficient')
+                    help='A vce loss coefficient')
 parser.add_argument('--B_vce_lambda', type=float, default=1.0, metavar='N',
+                    help='B vce loss coefficient')
+
+parser.add_argument('--A_vae_lambda', type=float, default=1.0, metavar='N',
+                    help='A vae loss coefficient')
+parser.add_argument('--B_vae_lambda', type=float, default=1.0, metavar='N',
                     help='B vae loss coefficient')
 
 
@@ -429,6 +434,16 @@ def train(epoch, is_final):
                               mu_2 = return_dict['B2A_mu'], 
                               logvar_2 = return_dict['B2A_logvar'])
         
+        A_vae_loss = vae_loss(recon_x = return_dict['A_rec'], 
+                              x = A_data, 
+                              mu = return_dict['A_mu'], 
+                              logvar = return_dict['A_logvar'])
+        
+        B_vae_loss = vae_loss(recon_x = return_dict['B_rec'], 
+                              x = B_data, 
+                              mu = return_dict['B_mu'], 
+                              logvar = return_dict['B_logvar'])
+        
         A_med_loss = mutual_encoding_loss(z1 = return_dict['A_z'], 
                                           z2 = return_dict['A2B_z'])
         
@@ -436,15 +451,12 @@ def train(epoch, is_final):
                                           z2 = return_dict['B2A_z'])
                 
         xae_loss = args.A_vce_lambda * A_vce_loss + \
-                   args.B_vce_lambda * B_vce_loss  + \
+                   args.B_vce_lambda * B_vce_loss + \
+                   args.A_vae_lambda * A_vae_loss + \
+                   args.B_vae_lambda * B_vae_loss + \
                    args.A_med_lambda * A_med_loss + \
                    args.B_med_lambda * B_med_loss
         
-        # check do_vae_loss
-        xae_loss = args.A_vce_lambda * A_vce_loss + \
-                   args.B_vce_lambda * B_vce_loss + \
-                   args.A_med_lambda * A_med_loss + \
-                   args.B_med_lambda * B_med_loss
           
         xae_loss.backward()
         optimizer.step()
