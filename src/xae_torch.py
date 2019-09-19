@@ -492,7 +492,7 @@ def train(epoch, is_final):
                          index = False)
     
     # save batch of reconstructions
-    if (args.do_gate_layer) & (epoch % args.n_epoch_set_binary) == 0:
+    if (args.do_gate_layer) & (epoch % args.n_epoch_set_binary == 0):
         set_binary_layer(epoch)
 
     save_batch_reconstructions(return_dict, A_data, epoch)
@@ -535,7 +535,8 @@ def save_batch_reconstructions(return_dict, A_data, epoch):
     to_save.save(os.path.join(args.save_dir, 'image_reconstructions.png'))
     
 
-def set_binary_layer(epoch):       
+def set_binary_layer(epoch):
+    print('setting binary layer')
     gate_weights = model.B_encoder[0].weight.detach().cpu()
     gwpd = pd.DataFrame({'gate_weights':gate_weights.numpy()[0]})
     is_noise = np.ones(gwpd.shape[0])
@@ -546,8 +547,10 @@ def set_binary_layer(epoch):
     noise_quantile_cutoff = (noise_weight**2).quantile(args.quantile_cutoff)
     # set binary layer
     binary_layer_set = (gwpd['gate_weights']**2) > noise_quantile_cutoff
-    binary_layer_set = nn.Parameter(torch.tensor(binary_layer_set.astype(float)))
+    binary_layer_set = nn.Parameter(torch.tensor(binary_layer_set.astype(float)).cuda())
+    print('setting weights')
     model.B_encoder[0].binary_layer = binary_layer_set
+    print('weights set')
     save_gate_weights(epoch)
     
     
