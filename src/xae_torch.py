@@ -492,7 +492,7 @@ def train(epoch, is_final):
                          index = False)
     
     # save batch of reconstructions
-    if (epoch % args.n_epoch_set_binary) == 0:
+    if (args.do_gate_layer) & (epoch % args.n_epoch_set_binary) == 0:
         set_binary_layer(epoch)
 
     save_batch_reconstructions(return_dict, A_data, epoch)
