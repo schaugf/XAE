@@ -276,18 +276,18 @@ class XAE(nn.Module):
                 nn.Tanh(),
                 nn.Linear(in_shape[0], self.inter_dim*8),
                 nn.ReLU(),
-                nn.Linear(in_shape[0], self.inter_dim*4),
+                nn.Linear(self.inter_dim*8, self.inter_dim*4),
                 nn.ReLU(),
-                nn.Linear(self.inter_dim*8, self.inter_dim),
+                nn.Linear(self.inter_dim*4, self.inter_dim),
                 nn.ReLU()
                 )
         else:
             ome_encoder = nn.Sequential(
                 nn.Linear(in_shape[0], self.inter_dim*8),
                 nn.ReLU(),
-                nn.Linear(in_shape[0], self.inter_dim*4),
+                nn.Linear(self.inter_dim*8, self.inter_dim*4),
                 nn.ReLU(),
-                nn.Linear(self.inter_dim*8, self.inter_dim),
+                nn.Linear(self.inter_dim*4, self.inter_dim),
                 nn.ReLU()
                 )
         
