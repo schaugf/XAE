@@ -4,7 +4,7 @@ import argparse
 from PIL import Image
 import numpy as np
 import pandas as pd
-
+    
 import torch
 import torch.utils.data
 from torch import nn, optim
@@ -42,9 +42,9 @@ parser.add_argument('--A_med_lambda', type=float, default=10.0, metavar='N',
 parser.add_argument('--B_med_lambda', type=float, default=10.0, metavar='N',
                     help='B med loss coefficient')
 
-parser.add_argument('--A_vce_lambda', type=float, default=1.0, metavar='N',
+parser.add_argument('--A_vce_lambda', type=float, default=5.0, metavar='N',
                     help='A vce loss coefficient')
-parser.add_argument('--B_vce_lambda', type=float, default=1.0, metavar='N',
+parser.add_argument('--B_vce_lambda', type=float, default=5.0, metavar='N',
                     help='B vce loss coefficient')
 
 parser.add_argument('--A_vae_lambda', type=float, default=1.0, metavar='N',
@@ -52,9 +52,11 @@ parser.add_argument('--A_vae_lambda', type=float, default=1.0, metavar='N',
 parser.add_argument('--B_vae_lambda', type=float, default=1.0, metavar='N',
                     help='B vae loss coefficient')
 
-parser.add_argument('--n_epoch_set_binary', type=int, default=5, metavar='N',
+parser.add_argument('--gate_norm_lambda', type=int, default=1, metavar='N',
+                    help='lambda penalty on gate norm')
+parser.add_argument('--n_epoch_set_binary', type=int, default=25, metavar='N',
                     help='how often to set binary gate layer')
-parser.add_argument('--quantile_cutoff', type=float, default=0.8, metavar='N',
+parser.add_argument('--quantile_cutoff', type=float, default=0.5, metavar='N',
                     help='quantile of noise weights to set to zero')
 
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -63,7 +65,7 @@ parser.add_argument('--seed', type=int, default=1)
 
 args = parser.parse_args()
 
-                   
+     
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
 torch.manual_seed(args.seed)
@@ -274,12 +276,16 @@ class XAE(nn.Module):
                 nn.Tanh(),
                 nn.Linear(in_shape[0], self.inter_dim*8),
                 nn.ReLU(),
+                nn.Linear(in_shape[0], self.inter_dim*4),
+                nn.ReLU(),
                 nn.Linear(self.inter_dim*8, self.inter_dim),
                 nn.ReLU()
                 )
         else:
             ome_encoder = nn.Sequential(
                 nn.Linear(in_shape[0], self.inter_dim*8),
+                nn.ReLU(),
+                nn.Linear(in_shape[0], self.inter_dim*4),
                 nn.ReLU(),
                 nn.Linear(self.inter_dim*8, self.inter_dim),
                 nn.ReLU()
@@ -357,17 +363,6 @@ class XAE(nn.Module):
                 'A2B2A_rec' : A2B2A_rec,
                 'B2A2B_rec' : B2A2B_rec}
         
-    
-model = XAE(A_type = 'img', 
-            B_type = 'ome',
-            A_shape = A_shape,
-            B_shape = B_shape)
-
-if args.cuda:
-    model.cuda()
-
-optimizer = optim.Adam(model.parameters(), lr = args.lr)
-
 
 def vae_loss(recon_x, x, mu, logvar):
     BCE = F.binary_cross_entropy(recon_x.view(-1, np.prod(recon_x.shape[1:])),
@@ -459,18 +454,20 @@ def train(epoch, is_final):
         
         B_med_loss = mutual_encoding_loss(z1 = return_dict['B_z'], 
                                           z2 = return_dict['B2A_z'])
-                
+        
+        gate_norm_loss = torch.norm(model.B_encoder[0].weight)
+        
         xae_loss = args.A_vce_lambda * A_vce_loss + \
                    args.B_vce_lambda * B_vce_loss + \
                    args.A_vae_lambda * A_vae_loss + \
                    args.B_vae_lambda * B_vae_loss + \
                    args.A_med_lambda * A_med_loss + \
-                   args.B_med_lambda * B_med_loss
+                   args.B_med_lambda * B_med_loss + \
+                   args.gate_norm_lambda * gate_norm_loss
         
         xae_loss.backward()
         optimizer.step()
         
-        # TODO: if do_vae_loss, remove from storage
         loss_vals = [A_vce_loss.item(),
                      B_vce_loss.item(),
                      A_vae_loss.item(),
@@ -547,7 +544,11 @@ def set_binary_layer(epoch):
     noise_quantile_cutoff = (noise_weight**2).quantile(args.quantile_cutoff)
     # set binary layer
     binary_layer_set = (gwpd['gate_weights']**2) > noise_quantile_cutoff
-    binary_layer_set = nn.Parameter(torch.tensor(binary_layer_set.astype(float)).cuda())
+    binary_layer_set = torch.tensor(binary_layer_set.astype(float))
+    if args.cuda:
+        binary_layer_set = nn.Parameter(binary_layer_set.cuda())
+    else:
+        binary_layer_set = nn.Parameter(binary_layer_set)
     print('setting weights')
     model.B_encoder[0].binary_layer = binary_layer_set
     print('weights set')
@@ -584,10 +585,10 @@ def save_gate_weights(epoch):
     #Image.fromarray(b).show()
     
     
-def encode_all():
+def encode_all(loader):
     A_imgs = []
     A_predicted_imgs = []
-    for batch_idx, (A_data, B_data) in enumerate(eval_loader):
+    for batch_idx, (A_data, B_data) in enumerate(loader):
         A_data = Variable(A_data)
         B_data = Variable(B_data)
         
@@ -665,11 +666,21 @@ def encode_all():
         
 
 if __name__ == "__main__":
+    model = XAE(A_type = 'img', 
+            B_type = 'ome',
+            A_shape = A_shape,
+            B_shape = B_shape)
+
+    if args.cuda:
+        model.cuda()
+    
+    optimizer = optim.Adam(model.parameters(), lr = args.lr)
+
     for epoch in range(1, args.epochs + 1):
         # TODO: shuffle tensor/array in better way
         # TODO: build test function
         train(epoch, is_final = epoch == args.epochs)
         
     print('encoding all')
-    encode_all()
+    encode_all(eval_loader)
     
