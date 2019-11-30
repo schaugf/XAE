@@ -36,7 +36,7 @@ def train(epoch, is_final):
                  'B_med_loss',
                  'total_loss']    
     all_losses = []
-
+    print('beginning epoch', epoch)
     for batch_idx, (A_data, B_data) in enumerate(train_loader):
         #A_data, B_data = next(iter(train_loader))  # for debugging
         A_data = Variable(A_data)
@@ -101,21 +101,18 @@ def train(epoch, is_final):
             
     # at end of epoch
     print('Epoch:', epoch, 'XAE loss:', round(xae_loss.item(), 0))
-
     mean_loss = pd.DataFrame(pd.DataFrame(all_losses).mean()).T
     mean_loss['epoch'] = epoch
-    
     with open(os.path.join(args.save_dir, 'xae_loss.csv'), 'a') as f:
         mean_loss.to_csv(f, 
                          header = [True if epoch == 1 else False][0], 
                          index = False)
-    
     # save batch of reconstructions
     if (args.do_gate_layer) & (epoch % args.n_epoch_set_binary == 0):
         set_binary_layer(epoch)
-
-    save_batch_reconstructions(return_dict, A_data, epoch)
-    
+    #save_batch_reconstructions(return_dict, A_data, epoch)
+    torch.save(model.state_dict(), 
+                   os.path.join(args.save_dir, 'xae_model_statedict.pt'))
     
 def save_batch_reconstructions(return_dict, A_data, epoch):
     '''Split datafiles into testing and training sets
@@ -165,7 +162,6 @@ def save_batch_reconstructions(return_dict, A_data, epoch):
     to_save = Image.fromarray((255*imgs_to_save).astype(np.uint8))
     to_save.save(os.path.join(args.save_dir, 'image_reconstructions.png'))
     
-
 def set_binary_layer(epoch):
     '''Set the binary layer on the gate layer
     Arguments:
@@ -208,53 +204,51 @@ def save_gate_weights(epoch):
     '''
     gate_weights = model.B_encoder[0].weight
     gate_binary = model.B_encoder[0].binary_layer
-    
     gw = pd.DataFrame({'gate_weights': gate_weights.detach().cpu()[0].numpy().T,
                        'gate_binary' : gate_binary.detach().cpu().numpy().T})
-    
     gw.to_csv(os.path.join(args.save_dir, 'gate_weights.csv'), index=False)
-    
     # remove elements to make square matrix
     nrm = np.mod(gw.shape[0], train_img.shape[2])
     if nrm !=0 :
         gw = gw.iloc[:-nrm,]
-    
     # TODO: check if image exists in filesystem, load else create
-    
     # TODO: load image, append as in reconstruction
     g = np.array(gw['gate_weights']).reshape(-1, train_img.shape[2])
     g = (255*((g**2)/(g**2).max())).astype(np.uint8)
     Image.fromarray(g).save(os.path.join(args.save_dir, 'gate_2d.jpg'))
-    
     # binary weights
     b = np.array(gw['gate_binary']).reshape(-1, train_img.shape[2])
     b = (b*255).astype(np.uint8)
-    Image.fromarray(b).save(os.path.join(args.save_dir, 'gate_binary_2d.jpg'))
-
-    #Image.fromarray(g).show()
-    #Image.fromarray(b).show()
+    Image.fromarray(b).save(os.path.join(args.save_dir, 'gate_binary_2d.jpg'))  
     
-    
-def encode_all(loader):
+def encode_all():
     '''Encode entire dataset and save to file
     Arguments:
-        loader (torch): pytorch dataloader object
+        None
     Returns:
         None
     '''
-    A_imgs = []
-    A_predicted_imgs = []
-    for batch_idx, (A_data, B_data) in enumerate(loader):
+    # TODO: have functions for save_img/save_ome and call correctly
+    if args.A_type == 'ome':
+        A_data_save, B2A_pred_save = pd.DataFrame(), pd.DataFrame()
+    elif args.A_type == 'img':
+        A_data_save, B2A_pred_save = [], []
+    if args.B_type == 'ome':
+        B_data_save, A2B_pred_save  = pd.DataFrame(), pd.DataFrame()
+    elif args.B_type == 'img':
+        B_data_save, A2B_pred_save = [], []
+    print('encoding data')
+    for batch_idx, (A_data, B_data) in enumerate(eval_loader):
+        #A_data, B_data = next(iter(eval_loader))  # for debugging
         A_data = Variable(A_data)
         B_data = Variable(B_data)
-        
-        if args.cuda:
+        if args.cuda == 'gpu':
             A_data = A_data.cuda()
             B_data = B_data.cuda()
             
-        return_dict = model(A_data, B_data)
+        return_dict = model(A_data.float(), B_data.float())
     
-        # save encodings
+        # save encodings (domain type independent)
         A_encodings = pd.DataFrame(return_dict['A_z'].detach().cpu().numpy())
         with open(os.path.join(args.save_dir, 'A_encodings.csv'), 'a') as f:
             A_encodings.to_csv(f, index=False, header=False)
@@ -272,55 +266,71 @@ def encode_all(loader):
         with open(os.path.join(args.save_dir, 'B2A_encodings.csv'), 'a') as f:
             B2A_encodings.to_csv(f, index=False, header=False)
         
-        # save actual omics data to csv
-        B_data_save = pd.DataFrame(B_data.detach().cpu().numpy())
-        with open(os.path.join(args.save_dir, 'B_data.csv'), 'a') as f:
-            B_data_save.to_csv(f, index=False, header=False)
-        
-        # store actual images to nparray
-        A_imgs.append(A_data.detach().cpu().numpy())
-        
-        # save predicted imaging-omics as csv
-        A2B_pred = pd.DataFrame(return_dict['A2B_pred'].detach().cpu().numpy())
-        with open(os.path.join(args.save_dir, 'A2B_prediction.csv'), 'a') as f:
-            A2B_pred.to_csv(f, index=False, header=False)
-        
-        # store predicted omics-images as numpy arrays
-        B2A_pred = return_dict['B2A_pred'].detach().cpu().numpy()
-        A_predicted_imgs.append(B2A_pred)
-        
-    # save numpy image arrays
-    np.save(os.path.join(args.save_dir, 'A_data.npy'), np.concatenate(A_imgs))
-    np.save(os.path.join(args.save_dir, 'A_pred.npy'), np.concatenate(A_predicted_imgs))
-    # save a bunch of data
-    B_data_full = torch.tensor(np.array(pd.read_csv(os.path.join(args.save_dir, 
-                                                                 'B_data.csv'),
-                                         header=None)))
+        # save A domain data and translation into A
+        if args.A_type == 'ome':
+            A_data_save = A_data_save.append(pd.DataFrame(A_data.detach().cpu().numpy()))
+            B2A_pred_save = B2A_pred_save.append(pd.DataFrame(return_dict['B2A_pred'].detach().cpu().numpy()))
+        elif args.A_type == 'img':
+            A_data_save.append(A_data.detach().cpu().numpy())
+            B2A_pred_save.append(return_dict['B2A_pred'].detach().cpu().numpy())
+        # save B domain data and translations into B
+        if args.B_type == 'ome':
+            B_data_save = B_data_save.append(pd.DataFrame(B_data.detach().cpu().numpy()))
+            A2B_pred_save = A2B_pred_save.append(pd.DataFrame(return_dict['A2B_pred'].detach().cpu().numpy()))
+        elif args.B_type == 'img':
+            B_data_save.append(B_data.detach().cpu().numpy())
+            A2B_pred_save.append(return_dict['A2B_pred'].detach().cpu().numpy())
+            
+    # save A domain data (domain type dependent)
+    if args.A_type == 'ome':
+        A_data_save.to_csv(os.path.join(args.save_dir, 'A_data.csv'), 
+                           index=False)
+        B2A_pred_save.to_csv(os.path.join(args.save_dir, 'B2A_pred.csv'), 
+                           index=False)
+    if args.A_type == 'img':
+        np.save(os.path.join(args.save_dir, 'A_data.npy'), 
+                np.concatenate(A_data_save))
+        np.save(os.path.join(args.save_dir, 'B2A_pred.npy'), 
+                np.concatenate(B2A_pred_save))
+    # save B domain translations
+    if args.B_type == 'ome':
+        B_data_save.to_csv(os.path.join(args.save_dir, 'B_data.csv'), 
+                           index=False)
+        A2B_pred_save.to_csv(os.path.join(args.save_dir, 'A2B_pred.csv'), 
+                           index=False)
+    if args.B_type == 'img':
+        np.save(os.path.join(args.save_dir, 'B_data.npy'), 
+                np.concatenate(B_data_save))
+        np.save(os.path.join(args.save_dir, 'A2B_pred.npy'), 
+                np.concatenate(A2B_pred_save))
+            
+    # compute xent of translation
+#    B_data_full = torch.tensor(np.array(pd.read_csv(os.path.join(args.save_dir, 
+#                                                                 'B_data.csv'),
+#                                         header=None)))
+#    A2B_pred_full = torch.tensor(np.array(pd.read_csv(os.path.join(args.save_dir, 
+#                                                                   'A2B_prediction.csv'),
+#                                         header=None)))
+#    A2B_xents = [F.binary_cross_entropy(A2B_pred_full[i], 
+#                                        B_data_full[i]).item() \
+#                 for i in range(len(A2B_pred_full))]
+#    
+#    pd.DataFrame(A2B_xents).to_csv(os.path.join(args.save_dir, 'A2B_xent.csv'),
+#                 header=None, index=False)
+#    
+#    A_data_full = torch.tensor(np.concatenate(A_imgs))
+#    A_data_pred = torch.tensor(np.concatenate(A_predicted_imgs))
+#    B2A_xents = [F.binary_cross_entropy(A_data_pred[i], 
+#                                        A_data_full[i]).item() \
+#                 for i in range(len(A_data_pred))]
+#    pd.DataFrame(B2A_xents).to_csv(os.path.join(args.save_dir, 'B2A_xent.csv'),
+#                 header=None, index=False)
     
-    A2B_pred_full = torch.tensor(np.array(pd.read_csv(os.path.join(args.save_dir, 
-                                                                   'A2B_prediction.csv'),
-                                         header=None)))
-    
-    A2B_xents = [F.binary_cross_entropy(A2B_pred_full[i], B_data_full[i]).item() \
-                 for i in range(len(A2B_pred_full))]
-    
-    pd.DataFrame(A2B_xents).to_csv(os.path.join(args.save_dir, 'A2B_xent.csv'),
-                 header=None, index=False)
-    
-    # compute xent of omics-to-image translation, read both A_data and A_pred
-    A_data_full = torch.tensor(np.concatenate(A_imgs))
-    A_data_pred = torch.tensor(np.concatenate(A_predicted_imgs))
-    
-    B2A_xents = [F.binary_cross_entropy(A_data_pred[i], A_data_full[i]).item() \
-                 for i in range(len(A_data_pred))]
-    
-    pd.DataFrame(B2A_xents).to_csv(os.path.join(args.save_dir, 'B2A_xent.csv'),
-                 header=None, index=False)
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train XAE Model')
     parser.add_argument('--A_datafile', type=str, 
-                        default='../data/CEDAR_prostate/scATAC_xae.csv',
+                        default='../data/CEDAR_prostate/scATAC_xae_test.csv',
                         help='pointer to A domain datafile (csv or npy)')
     parser.add_argument('--B_datafile', type=str, 
                         default='../data/CEDAR_prostate/cycIF_xae.csv',
@@ -333,7 +343,7 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 10)')
     parser.add_argument('--lr', type=float, default=1e-3,
                         help='optimizer learning rate (default: 1e-3)')
-    parser.add_argument('--epochs', type=int, default=10,
+    parser.add_argument('--epochs', type=int, default=2,
                         help='number of epochs to train (default: 5)')
     parser.add_argument('--save_dir', type=str, default='../results/test', 
                         help='save directory')
@@ -369,10 +379,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     args.cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    kwargs = {'num_workers': 4, 'pin_memory': False} if args.cuda =='cuda' else {}
     os.makedirs(args.save_dir, exist_ok = True)
     
-    # TODO: confugre domain-specific transforms
+    # TODO: configure basic domain-specific transforms
     img_transforms = transforms.Compose([transforms.ToPILImage(),
                                 transforms.RandomVerticalFlip(p=0.5),
                                 transforms.RandomHorizontalFlip(p=0.5),
@@ -393,8 +402,10 @@ if __name__ == "__main__":
                                    B_type = args.B_type,
                                    A_transforms = None, 
                                    B_transforms = None)
-        train_dataset.A_data = train_dataset.A_data / train_dataset.A_data.max()
-        train_dataset.B_data = train_dataset.B_data / train_dataset.B_data.max()
+        A_scale_factor = train_dataset.A_data.max()
+        B_scale_factor = train_dataset.B_data.max()
+        train_dataset.A_data = train_dataset.A_data / A_scale_factor
+        train_dataset.B_data = train_dataset.B_data / B_scale_factor
     else:
         sys.exit('both datafiles are required')
     
@@ -406,22 +417,26 @@ if __name__ == "__main__":
                                                batch_size = args.batch_size,
                                                shuffle = True,
                                                num_workers = 4, 
-                                               pin_memory = False)    
-                     
+                                               pin_memory = False)
+    
+    eval_loader = torch.utils.data.DataLoader(train_dataset,
+                                              batch_size = args.batch_size,
+                                              shuffle = False,
+                                              num_workers = 4, 
+                                              pin_memory = False)
+                 
     model = XAE(A_type = 'ome', 
                 B_type = 'ome',
                 A_shape = A_shape,
                 B_shape = B_shape)
 
-    if args.cuda:
+    if args.cuda == 'gpu':
         model.cuda()
     
     optimizer = optim.Adam(model.parameters(), lr = args.lr)
 
     for epoch in range(1, args.epochs + 1):
-        print('beginning epoch', epoch)
         train(epoch, is_final = epoch == args.epochs)
         
-    #print('encoding all')
-    #encode_all(eval_loader)
+    encode_all()
     
