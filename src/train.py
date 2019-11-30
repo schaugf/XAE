@@ -355,17 +355,17 @@ if __name__ == "__main__":
                         help='fraction of noise added to input')
     parser.add_argument('--do_gate_layer', type=int, default=1,
                         help='append weighted gate layer to input?')
-    parser.add_argument('--A_med_lambda', type=float, default=10.0,
+    parser.add_argument('--A_med_lambda', type=float, default=100.0,
                         help='A mes loss coefficient')
-    parser.add_argument('--B_med_lambda', type=float, default=10.0,
+    parser.add_argument('--B_med_lambda', type=float, default=100.0,
                         help='B med loss coefficient')
-    parser.add_argument('--A_vce_lambda', type=float, default=3.0,
+    parser.add_argument('--A_vce_lambda', type=float, default=30.0,
                         help='A vce loss coefficient')
-    parser.add_argument('--B_vce_lambda', type=float, default=3.0,
+    parser.add_argument('--B_vce_lambda', type=float, default=30.0,
                         help='B vce loss coefficient')
-    parser.add_argument('--A_vae_lambda', type=float, default=1.0,
+    parser.add_argument('--A_vae_lambda', type=float, default=10.0,
                         help='A vae loss coefficient')
-    parser.add_argument('--B_vae_lambda', type=float, default=1.0,
+    parser.add_argument('--B_vae_lambda', type=float, default=10.0,
                         help='B vae loss coefficient')
     parser.add_argument('--gate_norm_lambda', type=int, default=1,
                         help='lambda penalty on gate norm')
