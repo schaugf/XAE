@@ -41,38 +41,33 @@ def train(epoch, is_final):
         #A_data, B_data = next(iter(train_loader))  # for debugging
         A_data = Variable(A_data)
         B_data = Variable(B_data)
-        
-        if args.cuda:
+        if args.cuda == 'gpu':
             A_data = A_data.cuda()
             B_data = B_data.cuda()
-            
         optimizer.zero_grad()
-        
-        # push data through model
-        return_dict = model(A_data, B_data)
-        
+        return_dict = model(A_data.float(), B_data.float())
         # compute losses
         A_vce_loss = vce_loss(recon_x = return_dict['A2B2A_rec'], 
-                              x = A_data, 
+                              x = A_data.float(), 
                               mu_1 = return_dict['A_mu'], 
                               logvar_1 = return_dict['A_logvar'], 
                               mu_2 = return_dict['A2B_mu'], 
                               logvar_2 = return_dict['A2B_logvar'])
         
         B_vce_loss = vce_loss(recon_x = return_dict['B2A2B_rec'], 
-                              x = B_data, 
+                              x = B_data.float(), 
                               mu_1 = return_dict['B_mu'], 
                               logvar_1 = return_dict['B_logvar'], 
                               mu_2 = return_dict['B2A_mu'], 
                               logvar_2 = return_dict['B2A_logvar'])
         
         A_vae_loss = vae_loss(recon_x = return_dict['A_rec'], 
-                              x = A_data, 
+                              x = A_data.float(), 
                               mu = return_dict['A_mu'], 
                               logvar = return_dict['A_logvar'])
         
         B_vae_loss = vae_loss(recon_x = return_dict['B_rec'], 
-                              x = B_data, 
+                              x = B_data.float(), 
                               mu = return_dict['B_mu'], 
                               logvar = return_dict['B_logvar'])
         
@@ -398,6 +393,8 @@ if __name__ == "__main__":
                                    B_type = args.B_type,
                                    A_transforms = None, 
                                    B_transforms = None)
+        train_dataset.A_data = train_dataset.A_data / train_dataset.A_data.max()
+        train_dataset.B_data = train_dataset.B_data / train_dataset.B_data.max()
     else:
         sys.exit('both datafiles are required')
     
