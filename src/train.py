@@ -401,14 +401,15 @@ if __name__ == "__main__":
     else:
         sys.exit('both datafiles are required')
     
+    # define initial dimensions
+    A_shape, B_shape = train_dataset.data_dim()
+
     # Configure data loader
     train_loader = torch.utils.data.DataLoader(train_dataset,
                                                batch_size = args.batch_size,
                                                shuffle = True,
                                                num_workers = 4, 
                                                pin_memory = False)    
-    # define initial dimensions
-    A_shape, B_shape = train_dataset.data_dim()
                      
     model = XAE(A_type = 'ome', 
                 B_type = 'ome',

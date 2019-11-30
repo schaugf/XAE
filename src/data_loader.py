@@ -37,16 +37,16 @@ class XAEdataset(Dataset):
         if A_type == 'img':
             self.A_data = np.load(A_datafile)
         elif A_type == 'ome':
-            self.A_data = pd.read_csv(A_datafile)
+            self.A_data = pd.read_csv(A_datafile).to_numpy()
         if B_type == 'img':
             self.B_data = np.load(B_datafile)
         elif B_type == 'ome':
-            self.B_data = pd.read_csv(B_datafile)
+            self.B_data = pd.read_csv(B_datafile).to_numpy()
         self.A_transforms = A_transforms
         self.B_transforms = B_transforms
         
     def __len__(self):
-        return self.A_data.shape[0], self.B_data.shape[0]
+        return max(self.A_data.shape[0], self.B_data.shape[0])
     
     def data_dim(self):
         return self.A_data.shape[1:], self.B_data.shape[1:]
