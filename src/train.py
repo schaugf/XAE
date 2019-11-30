@@ -8,10 +8,9 @@ import torch
 import torch.utils.data
 from torch import nn, optim
 from torch.autograd import Variable
-from torch.nn import functional as F
 from torchvision import transforms
 from losses import vae_loss, vce_loss, mutual_encoding_loss
-from data_loader import XAEdataset, MNISTdataset
+from data_loader import IMGdataset, OMEdataset, MNISTdataset
 from model import XAE
 
 def train(epoch, is_final):
@@ -37,7 +36,7 @@ def train(epoch, is_final):
                  'total_loss']    
     all_losses = []
     print('beginning epoch', epoch)
-    for batch_idx, (A_data, B_data) in enumerate(train_loader):
+    for batch_idx, (A_data, B_data) in enumerate(zip(A_loader, B_loader)):
         #A_data, B_data = next(iter(train_loader))  # for debugging
         A_data = Variable(A_data)
         B_data = Variable(B_data)
@@ -191,13 +190,11 @@ def set_binary_layer(epoch):
     
 def save_gate_weights(epoch):
     '''Split datafiles into testing and training sets
-    
     Arguments:
         save_dir (str): location to save training and testing sets
         processed_dir (str): location of processed slides
         slide_annot (str): annotation file for all slides
         split (float): fraction of data to be in training set
-          
     Returns:
         A pair of tuples containing tile stacks and annotations for both
         training and test data sets
@@ -228,7 +225,6 @@ def encode_all():
     Returns:
         None
     '''
-    # TODO: have functions for save_img/save_ome and call correctly
     if args.A_type == 'ome':
         A_data_save, B2A_pred_save = pd.DataFrame(), pd.DataFrame()
     elif args.A_type == 'img':
@@ -238,49 +234,51 @@ def encode_all():
     elif args.B_type == 'img':
         B_data_save, A2B_pred_save = [], []
     print('encoding data')
-    for batch_idx, (A_data, B_data) in enumerate(eval_loader):
-        #A_data, B_data = next(iter(eval_loader))  # for debugging
-        A_data = Variable(A_data)
-        B_data = Variable(B_data)
-        if args.cuda == 'gpu':
-            A_data = A_data.cuda()
-            B_data = B_data.cuda()
+    model.eval()
+    with torch.no_grad():
+        for batch_idx, (A_data, B_data) in enumerate(zip(A_loader, B_loader)):
+            #A_data, B_data = next(iter(eval_loader))  # for debugging
+            A_data = Variable(A_data)
+            B_data = Variable(B_data)
+            if args.cuda == 'gpu':
+                A_data = A_data.cuda()
+                B_data = B_data.cuda()
+                
+            return_dict = model(A_data.float(), B_data.float())
+        
+            # save encodings (domain type independent)
+            A_encodings = pd.DataFrame(return_dict['A_z'].detach().cpu().numpy())
+            with open(os.path.join(args.save_dir, 'A_encodings.csv'), 'a') as f:
+                A_encodings.to_csv(f, index=False, header=False)
             
-        return_dict = model(A_data.float(), B_data.float())
-    
-        # save encodings (domain type independent)
-        A_encodings = pd.DataFrame(return_dict['A_z'].detach().cpu().numpy())
-        with open(os.path.join(args.save_dir, 'A_encodings.csv'), 'a') as f:
-            A_encodings.to_csv(f, index=False, header=False)
-        
-        B_encodings = pd.DataFrame(return_dict['B_z'].detach().cpu().numpy())
-        with open(os.path.join(args.save_dir, 'B_encodings.csv'), 'a') as f:
-            B_encodings.to_csv(f, index=False, header=False)
-        
-        # save cycle-encodings
-        A2B_encodings = pd.DataFrame(return_dict['A2B_z'].detach().cpu().numpy())
-        with open(os.path.join(args.save_dir, 'A2B_encodings.csv'), 'a') as f:
-            A2B_encodings.to_csv(f, index=False, header=False)
-        
-        B2A_encodings = pd.DataFrame(return_dict['B2A_z'].detach().cpu().numpy())
-        with open(os.path.join(args.save_dir, 'B2A_encodings.csv'), 'a') as f:
-            B2A_encodings.to_csv(f, index=False, header=False)
-        
-        # save A domain data and translation into A
-        if args.A_type == 'ome':
-            A_data_save = A_data_save.append(pd.DataFrame(A_data.detach().cpu().numpy()))
-            B2A_pred_save = B2A_pred_save.append(pd.DataFrame(return_dict['B2A_pred'].detach().cpu().numpy()))
-        elif args.A_type == 'img':
-            A_data_save.append(A_data.detach().cpu().numpy())
-            B2A_pred_save.append(return_dict['B2A_pred'].detach().cpu().numpy())
-        # save B domain data and translations into B
-        if args.B_type == 'ome':
-            B_data_save = B_data_save.append(pd.DataFrame(B_data.detach().cpu().numpy()))
-            A2B_pred_save = A2B_pred_save.append(pd.DataFrame(return_dict['A2B_pred'].detach().cpu().numpy()))
-        elif args.B_type == 'img':
-            B_data_save.append(B_data.detach().cpu().numpy())
-            A2B_pred_save.append(return_dict['A2B_pred'].detach().cpu().numpy())
+            B_encodings = pd.DataFrame(return_dict['B_z'].detach().cpu().numpy())
+            with open(os.path.join(args.save_dir, 'B_encodings.csv'), 'a') as f:
+                B_encodings.to_csv(f, index=False, header=False)
             
+            # save cycle-encodings
+            A2B_encodings = pd.DataFrame(return_dict['A2B_z'].detach().cpu().numpy())
+            with open(os.path.join(args.save_dir, 'A2B_encodings.csv'), 'a') as f:
+                A2B_encodings.to_csv(f, index=False, header=False)
+            
+            B2A_encodings = pd.DataFrame(return_dict['B2A_z'].detach().cpu().numpy())
+            with open(os.path.join(args.save_dir, 'B2A_encodings.csv'), 'a') as f:
+                B2A_encodings.to_csv(f, index=False, header=False)
+            
+            # save A domain data and translation into A
+            if args.A_type == 'ome':
+                A_data_save = A_data_save.append(pd.DataFrame(A_data.detach().cpu().numpy()))
+                B2A_pred_save = B2A_pred_save.append(pd.DataFrame(return_dict['B2A_pred'].detach().cpu().numpy()))
+            elif args.A_type == 'img':
+                A_data_save.append(A_data.detach().cpu().numpy())
+                B2A_pred_save.append(return_dict['B2A_pred'].detach().cpu().numpy())
+            # save B domain data and translations into B
+            if args.B_type == 'ome':
+                B_data_save = B_data_save.append(pd.DataFrame(B_data.detach().cpu().numpy()))
+                A2B_pred_save = A2B_pred_save.append(pd.DataFrame(return_dict['A2B_pred'].detach().cpu().numpy()))
+            elif args.B_type == 'img':
+                B_data_save.append(B_data.detach().cpu().numpy())
+                A2B_pred_save.append(return_dict['A2B_pred'].detach().cpu().numpy())
+                
     # save A domain data (domain type dependent)
     if args.A_type == 'ome':
         A_data_save.to_csv(os.path.join(args.save_dir, 'A_data.csv'), 
@@ -396,35 +394,41 @@ if __name__ == "__main__":
     if args.dataset == 'MNIST':
         train_dataset = MNISTdataset(save_dir = args.save_dir)
     elif ((args.A_datafile is not None) & (args.B_datafile is not None)):
-        train_dataset = XAEdataset(A_datafile = args.A_datafile, 
-                                   B_datafile = args.B_datafile,
-                                   A_type = args.A_type,
-                                   B_type = args.B_type,
-                                   A_transforms = None, 
-                                   B_transforms = None)
-        A_scale_factor = train_dataset.A_data.max()
-        B_scale_factor = train_dataset.B_data.max()
-        train_dataset.A_data = train_dataset.A_data / A_scale_factor
-        train_dataset.B_data = train_dataset.B_data / B_scale_factor
+        if args.A_type == 'img':
+            A_dataset = IMGdataset(datafile = args.A_datafile, 
+                                         transforms = None)
+        elif args.A_type == 'ome':
+            A_dataset = OMEdataset(datafile = args.A_datafile, 
+                                         transforms = None)
+        A_scale_factor = A_dataset.data.max()
+        A_dataset.data = A_dataset.data / A_scale_factor
+        if args.B_type == 'img':
+            B_dataset = IMGdataset(datafile = args.B_datafile, 
+                                         transforms = None)
+        elif args.B_type == 'ome':
+            B_dataset = OMEdataset(datafile = args.B_datafile, 
+                                         transforms = None)
+        B_scale_factor = B_dataset.data.max()
+        B_dataset.data = B_dataset.data / B_scale_factor
     else:
         sys.exit('both datafiles are required')
+  
     
     # define initial dimensions
-    A_shape, B_shape = train_dataset.data_dim()
+    A_shape, B_shape = A_dataset.data_dim(), B_dataset.data_dim()
 
     # Configure data loader
-    train_loader = torch.utils.data.DataLoader(train_dataset,
-                                               batch_size = args.batch_size,
-                                               shuffle = True,
-                                               num_workers = 4, 
-                                               pin_memory = False)
+    A_loader = torch.utils.data.DataLoader(A_dataset,
+                                           batch_size = args.batch_size,
+                                           shuffle = True,
+                                           num_workers = 4, 
+                                           pin_memory = False)
     
-    eval_loader = torch.utils.data.DataLoader(train_dataset,
-                                              batch_size = args.batch_size,
-                                              shuffle = False,
-                                              num_workers = 4, 
-                                              pin_memory = False)
-                 
+    B_loader = torch.utils.data.DataLoader(B_dataset,
+                                           batch_size = args.batch_size,
+                                           shuffle = True,
+                                           num_workers = 4, 
+                                           pin_memory = False)
     model = XAE(A_type = 'ome', 
                 B_type = 'ome',
                 A_shape = A_shape,
@@ -438,5 +442,17 @@ if __name__ == "__main__":
     for epoch in range(1, args.epochs + 1):
         train(epoch, is_final = epoch == args.epochs)
         
+    A_loader = torch.utils.data.DataLoader(A_dataset,
+                                           batch_size = args.batch_size,
+                                           shuffle = False,
+                                           num_workers = 4, 
+                                           pin_memory = False)
+    
+    B_loader = torch.utils.data.DataLoader(B_dataset,
+                                           batch_size = args.batch_size,
+                                           shuffle = False,
+                                           num_workers = 4, 
+                                           pin_memory = False)
+    
     encode_all()
     

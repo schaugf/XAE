@@ -20,46 +20,54 @@ from torchvision import datasets, transforms
 #train_ome = np.concatenate((train_ome, train_samples), axis = 1)
 #test_ome = np.concatenate((test_ome, test_samples), axis = 1)
 
-class XAEdataset(Dataset):
+class OMEdataset(Dataset):
     '''Configure data loader for both domains
     Arguments:
-        A_datafile (str): datafile to load to domain A
-        B_datafile (str): datafile to load to domain B
-        A_type (str): defines as either image or omics dataset
-        B_type (str): defines as either image or omics dataset
-        A_transforms (obj): pytorch composed transforms for A domain
-        B_transforms (obj): pytorch composed transforms for B domain    
+        datafile (str): datafile to load to domain A
+        transforms (obj): pytorch composed transforms for A domain
     Returns:
         A tuple of samples drawn from A and B
     '''
-    def __init__(self, A_datafile, B_datafile, A_type, B_type, 
-                 A_transforms=None, B_transforms=None):
-        if A_type == 'img':
-            self.A_data = np.load(A_datafile)
-        elif A_type == 'ome':
-            self.A_data = pd.read_csv(A_datafile).to_numpy()
-        if B_type == 'img':
-            self.B_data = np.load(B_datafile)
-        elif B_type == 'ome':
-            self.B_data = pd.read_csv(B_datafile).to_numpy()
-        
-        self.A_transforms = A_transforms
-        self.B_transforms = B_transforms
+    def __init__(self, datafile, transforms=None):
+        self.data = pd.read_csv(datafile).to_numpy()
+        self.transforms = transforms        
         
     def __len__(self):
-        return min(self.A_data.shape[0], self.B_data.shape[0])
+        return self.data.shape[0]
     
     def data_dim(self):
-        return self.A_data.shape[1:], self.B_data.shape[1:]
+        return self.data.shape[1:]
     
     def __getitem__(self, idx):
-        A_batch = self.A_data[idx,:]
-        B_batch = self.B_data[idx,:]
-        if self.A_transforms is not None:
-            A_batch = self.A_transforms(A_batch)
-        if self.B_transforms is not None:
-            B_batch = self.B_transforms(B_batch)
-        return A_batch, B_batch
+        batch = self.data[idx,:]
+        if self.transforms is not None:
+            batch = self.transforms(batch)
+        return batch
+
+class IMGdataset(Dataset):
+    '''Configure data loader for both domains
+    Arguments:
+        datafile (str): datafile to load to domain A
+        transforms (obj): pytorch composed transforms for A domain
+    Returns:
+        A tuple of samples drawn from A and B
+    '''
+    def __init__(self, datafile, transforms=None):
+        self.data = np.load(datafile)
+        self.transforms = transforms        
+        
+    def __len__(self):
+        return self.data.shape[0]
+    
+    def data_dim(self):
+        return self.data.shape[1:]
+    
+    def __getitem__(self, idx):
+        batch = self.data[idx,:]
+        if self.transforms is not None:
+            batch = self.transforms(batch)
+        return batch
+
 
 class MNISTdataset(Dataset):
     '''Configure data loader for MNIST example
