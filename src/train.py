@@ -38,6 +38,8 @@ def train(epoch, is_final):
     print('beginning epoch', epoch)
     for batch_idx, (A_data, B_data) in enumerate(zip(A_loader, B_loader)):
         #A_data, B_data = next(iter(train_loader))  # for debugging
+        print('processing: epoch', epoch, 'batch', batch_idx)
+
         A_data = Variable(A_data)
         B_data = Variable(B_data)
         if args.cuda == 'cuda':
