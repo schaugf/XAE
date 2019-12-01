@@ -241,6 +241,7 @@ def encode_all():
     with torch.no_grad():
         for batch_idx, (A_data, B_data) in enumerate(zip(A_loader, B_loader)):
             #A_data, B_data = next(iter(eval_loader))  # for debugging
+            print('processing: epoch', epoch, 'batch', batch_idx)
             A_data = Variable(A_data)
             B_data = Variable(B_data)
             if args.cuda == 'cuda':
@@ -380,7 +381,8 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=1)
     args = parser.parse_args()
     
-    args.cuda = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    args.cuda = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('found device', args.cuda)
     os.makedirs(args.save_dir, exist_ok = True)
     
     # TODO: configure basic domain-specific transforms
@@ -439,6 +441,7 @@ if __name__ == "__main__":
                 B_shape = B_shape)
 
     if args.cuda == 'cuda':
+        print('pushing model to cuda')
         model.cuda()
     
     optimizer = optim.Adam(model.parameters(), lr = args.lr)
