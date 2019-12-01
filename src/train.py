@@ -40,7 +40,7 @@ def train(epoch, is_final):
         #A_data, B_data = next(iter(train_loader))  # for debugging
         A_data = Variable(A_data)
         B_data = Variable(B_data)
-        if args.cuda == 'gpu':
+        if args.cuda == 'cuda':
             A_data = A_data.cuda()
             B_data = B_data.cuda()
         optimizer.zero_grad()
@@ -226,13 +226,16 @@ def encode_all():
         None
     '''
     if args.A_type == 'ome':
-        A_data_save, B2A_pred_save = pd.DataFrame(), pd.DataFrame()
+        A_data_save, A_rec_save, B2A_pred_save = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     elif args.A_type == 'img':
-        A_data_save, B2A_pred_save = [], []
+        A_data_save, A_rec_save, B2A_pred_save = [], [], []
     if args.B_type == 'ome':
-        B_data_save, A2B_pred_save  = pd.DataFrame(), pd.DataFrame()
+        B_data_save, B_rec_save, A2B_pred_save  = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     elif args.B_type == 'img':
-        B_data_save, A2B_pred_save = [], []
+        B_data_save, B_rec_save, A2B_pred_save = [], [], []
+    A_encodings, B_encodings = pd.DataFrame(), pd.DataFrame()
+    A2B_encodings, B2A_encodings = pd.DataFrame(), pd.DataFrame()
+    
     print('encoding data')
     model.eval()
     with torch.no_grad():
@@ -240,7 +243,7 @@ def encode_all():
             #A_data, B_data = next(iter(eval_loader))  # for debugging
             A_data = Variable(A_data)
             B_data = Variable(B_data)
-            if args.cuda == 'gpu':
+            if args.cuda == 'cuda':
                 A_data = A_data.cuda()
                 B_data = B_data.cuda()
                 
@@ -248,6 +251,7 @@ def encode_all():
         
             # save encodings (domain type independent)
             A_encodings = pd.DataFrame(return_dict['A_z'].detach().cpu().numpy())
+            
             with open(os.path.join(args.save_dir, 'A_encodings.csv'), 'a') as f:
                 A_encodings.to_csv(f, index=False, header=False)
             
@@ -341,7 +345,7 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 10)')
     parser.add_argument('--lr', type=float, default=1e-3,
                         help='optimizer learning rate (default: 1e-3)')
-    parser.add_argument('--epochs', type=int, default=2,
+    parser.add_argument('--epochs', type=int, default=10,
                         help='number of epochs to train (default: 5)')
     parser.add_argument('--save_dir', type=str, default='../results/test', 
                         help='save directory')
@@ -434,7 +438,7 @@ if __name__ == "__main__":
                 A_shape = A_shape,
                 B_shape = B_shape)
 
-    if args.cuda == 'gpu':
+    if args.cuda == 'cuda':
         model.cuda()
     
     optimizer = optim.Adam(model.parameters(), lr = args.lr)
