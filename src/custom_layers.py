@@ -1,4 +1,6 @@
+import os
 import numpy as np
+import pandas as pd
 import torch
 from torch import nn
 
@@ -42,7 +44,30 @@ class GateLayer(nn.Module):
         nn.init.kaiming_uniform_(self.weight)
         self.binary_layer = nn.Parameter(torch.FloatTensor(np.ones(in_shape)))
         self.binary_layer.requires_grad = False
-        
+        self.gate_weights = self.weight[0].detach().cpu().numpy()
+
+    def set_binary_layer(self, qcutoff):
+        '''Set binary layer of the gate given a quantile cutoff
+        Arguments:
+            None
+        Returns:
+            None
+        '''
+        qthres = np.quantile(self.gate_weights**2, qcutoff)
+        self.binary_layer[self.gate_weights**2 < qthres] = 0
+         
+    def save_gate_weights(self, save_dir, label=''):
+        '''Save the gate weights to a csv file
+        Arguments:
+            save_dir (str): location to save gate weights
+            label (str): label to append to file to make unique
+        Returns:
+            None
+        '''
+        gws = pd.DataFrame({'gate_weights': self.gate_weights})
+        gws.to_csv(os.path.join(save_dir, label+'_gate_weights.csv'), 
+                   index=False)
+
     def forward(self, x):
         return x * self.weight * self.binary_layer
     

@@ -20,6 +20,23 @@ from torchvision import datasets, transforms
 #train_ome = np.concatenate((train_ome, train_samples), axis = 1)
 #test_ome = np.concatenate((test_ome, test_samples), axis = 1)
 
+
+class XAEdataset(Dataset):
+    '''Base class for an XAE dataset with data corruption method
+    '''
+    def corrupt_input(self, pct_noise):
+        print('corrupting omics domain')
+        dsize = 5000  # this should be whatever __len__() returns
+        n_samples_to_add = int(dsize * pct_noise /
+                               (1 - pct_noise))
+        train_shape_to_add = (dsize, n_samples_to_add)
+        sample_space = np.reshape(self.data, -1)
+        train_samples = np.random.choice(sample_space, 
+                                         np.prod(train_shape_to_add))
+        train_samples = np.reshape(train_samples, train_shape_to_add)
+        self.data = np.concatenate((self.data, train_samples), axis = 1)
+    
+#class OMEdataset(XAEdataset):  # if XAEdataset is implemented
 class OMEdataset(Dataset):
     '''Configure data loader for both domains
     Arguments:

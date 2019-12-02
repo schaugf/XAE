@@ -12,7 +12,8 @@ class XAE(nn.Module):
         B_shape (tuple): shape of B domain input
         latent_dim (int): dimension of learned latent representation
         inter_dim (int): dimension of intermediate dimension
-        do_gate_layer (bool): gate input omics layer
+        do_gate_A (bool): gate input layer for A
+        do_gate_B (bool): gate input layer for B
     Returns:
         Pytorch model of XAE learning architecture
     '''
@@ -23,7 +24,8 @@ class XAE(nn.Module):
                  B_shape = (),
                  latent_dim = 8,
                  inter_dim = 32,
-                 do_gate_layer = False):
+                 do_gate_A = False,
+                 do_gate_B = False):
         super(XAE, self).__init__()
         self.A_type = A_type
         self.B_type = B_type
@@ -31,24 +33,26 @@ class XAE(nn.Module):
         self.B_shape = B_shape
         self.latent_dim = latent_dim
         self.inter_dim = inter_dim
-        self.do_gate_layer = do_gate_layer
+        self.do_gate_A = do_gate_A
+        self.do_gate_B = do_gate_B
         # shared latent feature layers
         self.shared_fc1 = nn.Linear(self.inter_dim, self.latent_dim)
         self.shared_fc2 = nn.Linear(self.inter_dim, self.latent_dim)
         # configure A-domain
         if self.A_type == 'img':
-            # load modules from definitions
             self.A_encoder = self.make_image_encoder(in_shape = A_shape)
             self.A_decoder = self.make_image_decoder(out_shape = A_shape)
         elif self.A_type == 'ome':
-            self.A_encoder = self.make_omic_encoder(in_shape = A_shape)
+            self.A_encoder = self.make_omic_encoder(in_shape = A_shape, 
+                                                    do_gate = self.do_gate_A)
             self.A_decoder = self.make_omic_decoder(out_shape = A_shape)
         # configure B-domain
         if self.B_type == 'img':
             self.B_encoder = self.make_image_encoder(in_shape = B_shape)
             self.B_decoder = self.make_image_decoder(out_shape = B_shape)
         elif self.B_type == 'ome':
-            self.B_encoder = self.make_omic_encoder(in_shape = B_shape)
+            self.B_encoder = self.make_omic_encoder(in_shape = B_shape,
+                                                    do_gate = self.do_gate_B)
             self.B_decoder = self.make_omic_decoder(out_shape = B_shape)
     
     def make_image_encoder(self, in_shape):
@@ -95,14 +99,14 @@ class XAE(nn.Module):
                 nn.Sigmoid()
                 )
     
-    def make_omic_encoder(self, in_shape):
+    def make_omic_encoder(self, in_shape, do_gate):
         '''Configure omic encoder
         Arguments:
             in_shape (tuple): input tensor shape
         Returns:
             Omic encoder network
         '''
-        if self.do_gate_layer:
+        if do_gate:
             print('gating input')
             return nn.Sequential(
                 GateLayer(in_shape[0]),
