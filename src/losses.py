@@ -16,7 +16,7 @@ def vae_loss(x, recon_x, mu, logvar):
                                  x.view(-1, np.prod(x.shape[1:])), 
                                  reduction = 'sum')
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-    return BCE + (0.2 * KLD)
+    return BCE + (0.1 * KLD)
 
 def vce_loss(x, recon_x, mu_1, logvar_1, mu_2, logvar_2):
     '''Variational cycle consistency loss
@@ -35,7 +35,7 @@ def vce_loss(x, recon_x, mu_1, logvar_1, mu_2, logvar_2):
                                 reduction = 'sum')
     KLD_1 = -0.5 * torch.sum(1 + logvar_1 - mu_1.pow(2) - logvar_1.exp())
     KLD_2 = -0.5 * torch.sum(1 + logvar_2 - mu_2.pow(2) - logvar_2.exp())
-    return CC + (0.1 * KLD_1) + (0.1 * KLD_2)
+    return CC + (0.05 * KLD_1) + (0.05 * KLD_2)
 
 def mutual_encoding_loss(z1, z2):
     '''Mutual encoding loss term
@@ -45,5 +45,5 @@ def mutual_encoding_loss(z1, z2):
     Returns:
         Mutual encoding loss ternsor
     '''
-    return F.mse_loss(z1, z2)
+    return F.mse_loss(z1, z2) * z1.shape[0]
     

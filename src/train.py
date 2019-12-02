@@ -101,7 +101,13 @@ def train(epoch, is_final):
         all_losses.append(dict(zip(loss_keys, loss_vals)))
         if batch_idx % args.logint == 0:        
             print('processing: epoch', epoch, 'batch', batch_idx, 
-                  'loss:', xae_loss.item())
+                  'total loss:', xae_loss.item(),
+                  'A_vce_loss:', round(A_vce_loss.item()),
+                  'B_vce_loss:', round(B_vce_loss.item()),
+                  'A_vae_loss:', round(A_vae_loss.item()),
+                  'B_vae_loss:', round(B_vae_loss.item()),
+                  'A_med_loss:', round(A_med_loss.item()),
+                  'B_med_loss:', round(B_med_loss.item()))
         
     # at end of epoch
     print('Epoch:', epoch, 'XAE loss:', round(xae_loss.item(), 0))
