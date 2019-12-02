@@ -21,7 +21,7 @@ class Rachet(nn.Module):
     Arguments:
         output_shape (tuple): desired output shape
     Returns:
-        racheted view as input tensor
+        racheted view of input tensor
     '''
     def __init__(self, out_shape):
         super(Rachet, self).__init__()
@@ -29,7 +29,7 @@ class Rachet(nn.Module):
         
     def forward(self, x):
         return x.view(x.size(0), 8, self.out_shape[1], self.out_shape[2])
-    
+
 class GateLayer(nn.Module):
     '''Custom element-wise gate layer 
     Arguments:

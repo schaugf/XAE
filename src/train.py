@@ -35,6 +35,7 @@ def train(epoch, is_final):
                  'B_med_loss',
                  'total_loss']    
     all_losses = []
+    
     print('beginning epoch', epoch)
     for batch_idx, (A_data, B_data) in enumerate(zip(A_loader, B_loader)):
         #A_data, B_data = next(iter(zip(A_loader, B_loader)))  # for debugging
@@ -222,7 +223,7 @@ if __name__ == "__main__":
                         help='A domain type (img or ome)')
     parser.add_argument('--B_type', type=str, default='ome',
                         help='B domain type (img or ome)')
-    parser.add_argument('--batch_size', type=int, default=8,
+    parser.add_argument('--batch_size', type=int, default=32,
                         help='input batch size for training (default: 10)')
     parser.add_argument('--lr', type=float, default=1e-3,
                         help='optimizer learning rate (default: 1e-3)')
@@ -244,19 +245,19 @@ if __name__ == "__main__":
                         help='gate domain B?')
     parser.add_argument('--quantile_cutoff', type=float, default=0.10,
                         help='quantile of noise weights to set to zero')
-    parser.add_argument('--A_med_lambda', type=float, default=100.0,
+    parser.add_argument('--A_med_lambda', type=float, default=1.0,
                         help='A mes loss coefficient')
-    parser.add_argument('--B_med_lambda', type=float, default=100.0,
+    parser.add_argument('--B_med_lambda', type=float, default=1.0,
                         help='B med loss coefficient')
-    parser.add_argument('--A_vce_lambda', type=float, default=30.0,
+    parser.add_argument('--A_vce_lambda', type=float, default=3.0,
                         help='A vce loss coefficient')
-    parser.add_argument('--B_vce_lambda', type=float, default=30.0,
+    parser.add_argument('--B_vce_lambda', type=float, default=3.0,
                         help='B vce loss coefficient')
-    parser.add_argument('--A_vae_lambda', type=float, default=10.0,
+    parser.add_argument('--A_vae_lambda', type=float, default=0.0,
                         help='A vae loss coefficient')
-    parser.add_argument('--B_vae_lambda', type=float, default=10.0,
+    parser.add_argument('--B_vae_lambda', type=float, default=0.0,
                         help='B vae loss coefficient')
-    parser.add_argument('--gate_norm_lambda', type=int, default=1,
+    parser.add_argument('--gate_norm_lambda', type=int, default=0,
                         help='lambda penalty on gate norm')
     parser.add_argument('--n_epoch_set_binary', type=int, default=500,
                         help='how often to set binary gate layer')
@@ -341,12 +342,10 @@ if __name__ == "__main__":
                                            shuffle = False,
                                            num_workers = 4, 
                                            pin_memory = False)
-    
     B_loader = torch.utils.data.DataLoader(B_dataset,
                                            batch_size = args.batch_size,
                                            shuffle = False,
                                            num_workers = 4, 
                                            pin_memory = False)
-    
     encode_all()
     

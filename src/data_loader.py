@@ -46,11 +46,13 @@ class OMEdataset(Dataset):
         A tuple of samples drawn from A and B
     '''
     def __init__(self, datafile, transforms=None):
-        self.data = pd.read_csv(datafile).to_numpy()
+        self.data = pd.read_csv(datafile)
+        self.features = [f for f in self.data.columns]
+        self.data = self.data.to_numpy()
         self.transforms = transforms        
         
     def __len__(self):
-        return self.data.shape[0]
+        return len(self.data)
     
     def data_dim(self):
         return self.data.shape[1:]
@@ -74,7 +76,7 @@ class IMGdataset(Dataset):
         self.transforms = transforms        
         
     def __len__(self):
-        return self.data.shape[0]
+        return len(self.data)
     
     def data_dim(self):
         return self.data.shape[1:]

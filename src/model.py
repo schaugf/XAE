@@ -26,6 +26,7 @@ class XAE(nn.Module):
                  inter_dim = 32,
                  do_gate_A = False,
                  do_gate_B = False):
+        
         super(XAE, self).__init__()
         self.A_type = A_type
         self.B_type = B_type
@@ -35,10 +36,12 @@ class XAE(nn.Module):
         self.inter_dim = inter_dim
         self.do_gate_A = do_gate_A
         self.do_gate_B = do_gate_B
+        
         # shared latent feature layers
         self.shared_fc1 = nn.Linear(self.inter_dim, self.latent_dim)
         self.shared_fc2 = nn.Linear(self.inter_dim, self.latent_dim)
-        # configure A-domain
+        
+        # configure A-domain networks
         if self.A_type == 'img':
             self.A_encoder = self.make_image_encoder(in_shape = A_shape)
             self.A_decoder = self.make_image_decoder(out_shape = A_shape)
@@ -46,7 +49,8 @@ class XAE(nn.Module):
             self.A_encoder = self.make_omic_encoder(in_shape = A_shape, 
                                                     do_gate = self.do_gate_A)
             self.A_decoder = self.make_omic_decoder(out_shape = A_shape)
-        # configure B-domain
+        
+        # configure B-domain networks
         if self.B_type == 'img':
             self.B_encoder = self.make_image_encoder(in_shape = B_shape)
             self.B_decoder = self.make_image_decoder(out_shape = B_shape)
@@ -152,9 +156,9 @@ class XAE(nn.Module):
         Returns:
             reparameterized representation of latent distribution
         '''
-        std = torch.exp(0.5*logvar)
+        std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
-        return mu + eps*std
+        return mu + (eps * std)
 
     def forward(self, A_in, B_in):
         '''Forward pass over the XAE network
@@ -182,12 +186,14 @@ class XAE(nn.Module):
             B2A2B_rec (tensor): B reconstruction through A
         '''
         A_inter = self.A_encoder(A_in)
-        A_mu, A_logvar = self.shared_fc1(A_inter), self.shared_fc2(A_inter)
+        A_mu = self.shared_fc1(A_inter)
+        A_logvar = self.shared_fc2(A_inter)
         A_z = self.reparameterize(A_mu, A_logvar)
         A_rec = self.A_decoder(A_z)
         
         B_inter = self.B_encoder(B_in)
-        B_mu, B_logvar = self.shared_fc1(B_inter), self.shared_fc2(B_inter)
+        B_mu = self.shared_fc1(B_inter) 
+        B_logvar = self.shared_fc2(B_inter)
         B_z = self.reparameterize(B_mu, B_logvar)
         B_rec = self.B_decoder(B_z)
         
@@ -197,11 +203,13 @@ class XAE(nn.Module):
         
         # cycle autoencoders
         A2B_inter = self.B_encoder(A2B_pred)
-        A2B_mu, A2B_logvar = self.shared_fc1(A2B_inter), self.shared_fc2(A2B_inter)
+        A2B_mu = self.shared_fc1(A2B_inter)
+        A2B_logvar = self.shared_fc2(A2B_inter)
         A2B_z = self.reparameterize(A2B_mu, A2B_logvar)
         
         B2A_inter = self.A_encoder(B2A_pred)
-        B2A_mu, B2A_logvar = self.shared_fc1(B2A_inter), self.shared_fc2(B2A_inter)
+        B2A_mu = self.shared_fc1(B2A_inter)
+        B2A_logvar = self.shared_fc2(B2A_inter)
         B2A_z = self.reparameterize(B2A_mu, B2A_logvar)
         
         # cycle reconstructions
