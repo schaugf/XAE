@@ -145,7 +145,7 @@ class XAE(nn.Module):
                 nn.Linear(self.inter_dim, self.inter_dim*8),
                 nn.ReLU(),
                 nn.Linear(self.inter_dim*8, out_shape[0]),
-                nn.Sigmoid()
+                nn.ReLU()
                 )
         
     def reparameterize(self, mu, logvar):

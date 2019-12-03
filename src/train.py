@@ -220,10 +220,10 @@ def encode_all():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train XAE Model')
     parser.add_argument('--A_datafile', type=str, 
-                        default='../data/CEDAR_prostate/scATAC_xae_test.csv',
+                        default='../data/CEDAR_prostate/scATAC_xae_data.csv',
                         help='pointer to A domain datafile (csv or npy)')
     parser.add_argument('--B_datafile', type=str, 
-                        default='../data/CEDAR_prostate/cycIF_xae.csv',
+                        default='../data/CEDAR_prostate/cycIF_xae_data.csv',
                         help='pointer to A domain datafile (csv or npy)')
     parser.add_argument('--A_type', type=str, default='ome',
                         help='A domain type (img or ome)')
