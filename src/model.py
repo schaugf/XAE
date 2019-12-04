@@ -111,7 +111,6 @@ class XAE(nn.Module):
             Omic encoder network
         '''
         if do_gate:
-            print('gating input')
             return nn.Sequential(
                 GateLayer(in_shape[0]),
                 nn.Tanh(),
