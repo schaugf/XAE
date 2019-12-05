@@ -197,22 +197,30 @@ def encode_all():
     if args.A_type == 'ome':
         A_data_save.to_csv(os.path.join(args.save_dir, 'A_data.csv'), 
                            index=False)
+        A_rec_save.to_csv(os.path.join(args.save_dir, 'A_rec.csv'), 
+                           index=False)
         B2A_pred_save.to_csv(os.path.join(args.save_dir, 'B2A_pred.csv'), 
                            index=False)
     if args.A_type == 'img':
         np.save(os.path.join(args.save_dir, 'A_data.npy'), 
                 np.concatenate(A_data_save))
+        np.save(os.path.join(args.save_dir, 'A_rec.npy'), 
+                np.concatenate(A_rec_save))
         np.save(os.path.join(args.save_dir, 'B2A_pred.npy'), 
                 np.concatenate(B2A_pred_save))
     # save B domain translations
     if args.B_type == 'ome':
         B_data_save.to_csv(os.path.join(args.save_dir, 'B_data.csv'), 
                            index=False)
+        B_rec_save.to_csv(os.path.join(args.save_dir, 'B_rec.csv'), 
+                          index=False)
         A2B_pred_save.to_csv(os.path.join(args.save_dir, 'A2B_pred.csv'), 
                            index=False)
     if args.B_type == 'img':
         np.save(os.path.join(args.save_dir, 'B_data.npy'), 
                 np.concatenate(B_data_save))
+        np.save(os.path.join(args.save_dir, 'B_rec.npy'), 
+                np.concatenate(B_rec_save))
         np.save(os.path.join(args.save_dir, 'A2B_pred.npy'), 
                 np.concatenate(A2B_pred_save))
             
@@ -220,10 +228,12 @@ def encode_all():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train XAE Model')
     parser.add_argument('--A_datafile', type=str, 
-                        default='../data/CEDAR_prostate/scATAC_xae_data.csv',
+                        #default='../data/CEDAR_prostate/scATAC_xae_data.csv',
+                        default='../data/10x/pbmc_A.csv',
                         help='pointer to A domain datafile (csv or npy)')
     parser.add_argument('--B_datafile', type=str, 
-                        default='../data/CEDAR_prostate/cycIF_xae_data.csv',
+                        #default='../data/CEDAR_prostate/cycIF_xae_data.csv',
+                        default='../data/10x/pbmc_B.csv',
                         help='pointer to A domain datafile (csv or npy)')
     parser.add_argument('--A_type', type=str, default='ome',
                         help='A domain type (img or ome)')

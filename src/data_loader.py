@@ -45,10 +45,12 @@ class OMEdataset(Dataset):
     Returns:
         A tuple of samples drawn from A and B
     '''
-    def __init__(self, datafile, transforms=None):
+    def __init__(self, datafile, transforms=None, do_max_scale=True):
         self.data = pd.read_csv(datafile)
         self.features = [f for f in self.data.columns]
         self.data = self.data.to_numpy()
+        if do_max_scale:
+            self.data = self.data / self.data.max()
         self.transforms = transforms        
         
     def __len__(self):
