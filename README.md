@@ -1,3 +1,6 @@
-# Domain Integration
+# XAE Learning Architecture for Mutual Information Disentanglement
 
-Imaging-omics integration platfor for single-cell data
+<img src='assets/xae.png'>
+
+The XAE learning architecture is designed to identify domain-sharable information learned through gated cycle consistent translation between modalities.
+
